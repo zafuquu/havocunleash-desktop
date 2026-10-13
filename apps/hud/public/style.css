@@ -1,0 +1,93 @@
+:root {
+  --blue: #28d091;
+  --red: #ff3549;
+  --panel: rgba(10, 16, 24, 0.82);
+  --font: "Segoe UI", Roboto, Arial, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: transparent; font-family: var(--font); color: #eef2f6; overflow: hidden; }
+
+#root { display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 18px; }
+
+.score-line {
+  display: flex; align-items: center; gap: 14px;
+  background: var(--panel);
+  padding: 10px 22px; border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.35);
+}
+.team { display: flex; align-items: center; gap: 10px; }
+.team .tag { font-size: 12px; letter-spacing: .12em; opacity: .85; }
+.team .score { font-size: 34px; font-weight: 800; line-height: 1; min-width: 40px; text-align: center; }
+.team.blue .score { color: var(--blue); } .team.blue .tag { color: var(--blue); }
+.team.red  .score { color: var(--red);  } .team.red  .tag { color: var(--red); }
+.mid { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.round-chip { font-size: 13px; font-weight: 600; opacity: .95; }
+.spike { font-size: 12px; font-weight: 800; letter-spacing: .18em; color: #ffd166;
+         border: 1px solid #ffd16655; padding: 2px 10px; border-radius: 6px;
+         animation: pulse 1s infinite alternate; }
+.hidden { visibility: hidden; }
+@keyframes pulse { from { opacity:.55 } to { opacity:1 } }
+
+.alive-bar { width: 420px; height: 8px; background: rgba(255,255,255,.08);
+             border-radius: 4px; position: relative; overflow: hidden; }
+.alive-bar::after { content:""; position:absolute; inset:auto 50% auto auto; top:0; bottom:0;
+                    width:1px; background:#ffffff33; left:50%; transform:translateX(-.5px); }
+.pips { position:absolute; top:0; bottom:0; display:flex; gap:2px; }
+.pips.blue { left:0; justify-content:flex-start; }
+.pips.red { right:0; justify-content:flex-end; }
+.pip { width:38px; height:100%; border-radius:3px; }
+.pip.on-blue { background:var(--blue); box-shadow:0 0 8px #28d09166; }
+.pip.off { background:#ffffff14; }
+
+.killfeed { margin-top: 8px; display:flex; flex-direction:column-reverse; gap:5px; max-height:210px; overflow:hidden; }
+.kf-entry {
+  display:flex; gap:8px; align-items:center;
+  background: var(--panel); border-radius:7px; padding:5px 12px;
+  animation: kf-in .28s ease-out, kf-out .6s ease-in 6.5s forwards;
+}
+.kf-entry .attacker { color: var(--blue); font-weight:700; }
+.kf-entry.vice .attacker, .kf-entry.vice .victim { filter:hue-rotate(140deg) saturate(1.4); }
+.kf-entry .weapon { opacity:.75; font-style:italic; font-size:13px; }
+.kf-entry .mod { font-size:11px; color:#ffd166; letter-spacing:.08em; }
+@keyframes kf-in { from{transform:translateX(-12px);opacity:0} to{transform:none;opacity:1} }
+@keyframes kf-out { to{opacity:0; transform:translateY(-6px)} }
+
+/* ---- pipeline additions: rosters, round timer, scene switching ---- */
+.round-timer { font-size: 15px; font-weight: 700; opacity: .95; font-variant-numeric: tabular-nums; }
+.round-timer.urgent { color: #ffd166; }
+.rosters { display: flex; gap: 14px; justify-content: center; }
+.rosters.hidden { visibility: hidden; }
+.roster { min-width: 230px; display: flex; flex-direction: column; gap: 4px; }
+.roster.blue { align-items: flex-start; }
+.roster.red { align-items: flex-end; text-align: right; }
+.r-row { display: flex; gap: 8px; align-items: baseline; background: rgba(10,12,14,.55); border-radius: 6px; padding: 3px 10px; }
+.roster.red .r-row { flex-direction: row-reverse; }
+.r-name { font-size: 15px; font-weight: 700; }
+.r-agent { font-size: 12px; opacity: .8; }
+.r-kda { font-size: 12px; font-variant-numeric: tabular-nums; color: #e8eaed; min-width: 52px; text-align: center; }
+.r-ult { font-size: 11px; font-variant-numeric: tabular-nums; color: #ffd166; min-width: 34px; text-align: center; }
+.r-credits { font-size: 11px; font-variant-numeric: tabular-nums; color: #7bdff6; min-width: 40px; text-align: center; }
+.r-spike { font-size: 10px; font-weight: 800; color: #ff5c5c; letter-spacing: .5px; }
+.pip.on-red { background: var(--red); box-shadow: 0 0 8px #ff354966; }
+.r-agent-img { width: 22px; height: 22px; border-radius: 4px; object-fit: cover; align-self: center; }
+.r-shield { font-size: 11px; font-variant-numeric: tabular-nums; color: #9ecbff; }
+/* The viewer's own row: highlight + bought-ability chips (C/Q/E/X). */
+.r-row.me { background: rgba(255, 209, 102, .12); outline: 1px solid rgba(255, 209, 102, .55); }
+.r-you { font-size: 9px; font-weight: 800; letter-spacing: .08em; color: #0b0d0f; background: #ffd166; border-radius: 3px; padding: 1px 5px; }
+.r-abils { display: inline-flex; gap: 3px; align-self: center; }
+.abil { font-size: 10px; font-weight: 800; width: 16px; height: 16px; line-height: 16px; text-align: center; border-radius: 3px; }
+.abil.on { color: #06231a; background: var(--blue); }
+.abil.off { color: #eef2f6; background: rgba(238, 242, 246, .12); opacity: .4; }
+.spectator-badge { font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #ffd166; border: 1px solid #ffd16666; border-radius: 4px; padding: 1px 8px; margin-top: 2px; }
+.spectator-badge.hidden { display: none; }
+.map-chip { position: absolute; top: 6px; right: 10px; font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #e7e7e7; opacity: .75; background: rgba(10,12,14,.55); border-radius: 4px; padding: 2px 10px; }
+.r-row.dead { opacity: .38; }
+.r-row.dead .r-name { text-decoration: line-through; }
+/* Scene switching (projection deriveScene contract): agent-select shows
+   rosters only; buy-round adds the scoreline; ingame-hud/post-game are full. */
+#root[data-scene='agent-select'] .score-line,
+#root[data-scene='agent-select'] .killfeed,
+#root[data-scene='agent-select'] .alive-bar { display: none !important; }
+#root[data-scene='buy-round'] .killfeed { display: none; }
+#root[data-scene='post-game'] .killfeed { display: none; }
+.pipeline-debug { position: fixed; right: 6px; bottom: 4px; font: 11px monospace; color: #9aa0a6; }

@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+release/
+release-fresh/
+*.asar
+
+# Logs
+logs/
+*.log
+
+# Local secrets — the real runtime config holds the desktop auth token.
+# Only the *.example.json templates are tracked.
+config.json
+.env
+.env.*
+*.local
+
+# OS
+.DS_Store
+Thumbs.db

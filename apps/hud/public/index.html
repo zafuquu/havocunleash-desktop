@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HAVOC UNLEASH HUD (Classic)</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!-- val-classic style components: score-line, game-events, alive -->
+    <div id="root">
+      <div class="score-line" data-component="score-line">
+        <div class="team blue"><span class="tag">BLUE</span><span class="score" id="score-blue">0</span></div>
+        <div class="mid">
+          <div class="round-chip" id="round-chip">R0 · waiting</div>
+          <div class="round-timer" id="round-timer">--:--</div>
+          <div class="spike hidden" id="spike-banner">SPIKE PLANTED</div>
+          <div class="spectator-badge hidden" id="spectator-badge">SPECTATING</div>
+          <div class="map-chip" id="map-chip"></div>
+        </div>
+        <div class="team red"><span class="score" id="score-red">0</span><span class="tag">RED</span></div>
+      </div>
+
+      <div class="rosters" data-component="rosters" id="rosters">
+        <div class="roster blue" id="roster-blue"></div>
+        <div class="roster red" id="roster-red"></div>
+      </div>
+
+      <div class="alive-bar" data-component="alive">
+        <div class="pips blue" id="pips-blue"></div>
+        <div class="pips red" id="pips-red"></div>
+      </div>
+
+      <div class="killfeed" data-component="game-events" id="killfeed"></div>
+      <div class="pipeline-debug" id="pipeline-debug" style="display:none"></div>
+    </div>
+    <script src="./main.js"></script>
+  </body>
+</html>

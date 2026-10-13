@@ -1,0 +1,30 @@
+{
+  "name": "havoc-unleash",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Clean-room replication of the HAVOC Desktop architecture: local game-data runtime, anchored Valorant overlay, HUD server.",
+  "license": "MIT",
+  "type": "commonjs",
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev:runtime": "npm run dev -w services/game-data-runtime",
+    "dev:desktop": "npm run dev -w apps/desktop",
+    "integration": "node scripts/integration.mjs",
+    "test:sse": "node services/game-data-runtime/scripts/smoke-sse.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@overwolf/ow-electron-packages-types": "^1.1.10",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.2",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3"
+  }
+}

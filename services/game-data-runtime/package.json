@@ -1,0 +1,24 @@
+{
+  "name": "@havoc-unleash/game-data-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Standalone game-capture service exposing /health + /events SSE. Production source slot: Overwolf ow-electron/GEP adapter.",
+  "main": "./dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json && node dist/server.js",
+    "start": "node dist/server.js",
+    "test": "node --test test/gep-telemetry-state.test.mjs test/gep-monitor-recovery.test.mjs test/a5-session-identity.test.mjs"
+  },
+  "dependencies": {
+    "@havoc-unleash/contracts": "*",
+    "@overwolf/ow-electron": "^42.7.1",
+    "socket.io-client": "^4.7.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "typescript": "^5.5.4"
+  }
+}

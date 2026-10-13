@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Havoc Unleash — Desktop</title>
+  <link rel="stylesheet" href="shell.css" />
+</head>
+<body>
+  <main class="card">
+    <header>
+      <h1>Havoc Unleash <span>Desktop</span></h1>
+      <p id="subtitle">Broadcast coordinator</p>
+    </header>
+
+    <!-- 1) Login -->
+    <section id="view-login" class="view hidden">
+      <p class="muted">Sign in with Discord to link this desktop to your rooms.</p>
+      <button id="btn-login" class="btn primary discord">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.9 3l-.2.4a13.3 13.3 0 0 1 3.3 1.6 15.2 15.2 0 0 0-13.9 0A13.3 13.3 0 0 1 8.4 3.4L8.2 3a19.8 19.8 0 0 0-4.5 1.4C1.3 9.6.6 14.6 1 19.5a19.9 19.9 0 0 0 6 3l.5-.7a12.9 12.9 0 0 1-2.1-1l.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4a12.9 12.9 0 0 1-2.1 1l.5.7a19.9 19.9 0 0 0 6-3c.5-5.6-.8-10.5-3.7-15.1ZM8.7 16.4c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4Zm6.6 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4Z"/></svg>
+        Sign in with Discord
+      </button>
+      <p id="login-note" class="muted small hidden">Waiting for the browser sign-in to complete…</p>
+    </section>
+
+    <!-- 2) Room entry -->
+    <section id="view-room" class="view hidden">
+      <p class="muted">Enter the server code to broadcast, or pick one of your rooms.</p>
+      <form id="join-form">
+        <input id="room-code" type="text" placeholder="Server code (e.g. 7621a363-…)" autocomplete="off" spellcheck="false" />
+        <button class="btn primary" type="submit">Join room</button>
+      </form>
+      <div id="room-error" class="error hidden"></div>
+      <div class="divider"><span>your rooms</span></div>
+      <ul id="rooms-list" class="rooms"><li class="muted small">Loading…</li></ul>
+    </section>
+
+    <!-- 3) Connected -->
+    <section id="view-connected" class="view hidden">
+      <div class="row"><span class="muted">Room</span><b id="c-room">—</b></div>
+      <div class="row"><span class="muted">Game</span><b id="c-live">waiting…</b></div>
+      <div class="row"><span class="muted">Scene</span><b id="c-scene">—</b></div>
+      <div class="row"><span class="muted">Score</span><b id="c-score">0 : 0</b></div>
+      <button id="btn-overlay" class="btn primary">Start overlay</button>
+      <div class="row-actions">
+        <button id="btn-change-room" class="btn">Change room</button>
+        <button id="btn-leave" class="btn danger">Leave room</button>
+      </div>
+      <button id="btn-net-reset" class="btn small">Reset VALORANT network (observers)</button>
+      <p class="muted small">The overlay attaches automatically once VALORANT is running.</p>
+    </section>
+
+    <footer><span id="dot" class="dot"></span><span id="conn-text">runtime: idle</span></footer>
+  </main>
+  <script src="shell.js"></script>
+</body>
+</html>

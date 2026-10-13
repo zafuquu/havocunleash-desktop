@@ -1,0 +1,11 @@
+{
+  "name": "@havoc-unleash/hud",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Static OBS browser-source HUD consuming /api/state + /ws from the desktop app.",
+  "scripts": {
+    "test": "node --test test/hud-viewer-link.test.mjs"
+  },
+  "files": ["public/**"]
+}

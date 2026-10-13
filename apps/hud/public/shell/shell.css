@@ -1,0 +1,54 @@
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(140deg, #1b1c1e 0%, #0b0b0b 100%);
+  font-family: "Segoe UI", Inter, system-ui, sans-serif; color: #fffff5db;
+}
+.card {
+  width: 420px; background: rgba(20,21,23,.92); border: 1px solid rgba(255,255,255,.08);
+  border-radius: 14px; padding: 26px 26px 14px; box-shadow: 0 18px 48px rgba(0,0,0,.5);
+}
+header h1 { margin: 0; font-size: 21px; letter-spacing: .4px; }
+header h1 span { color: #33aaff; }
+header p { margin: 4px 0 0; color: #9aa0a6; font-size: 12px; }
+.view { margin-top: 20px; }
+.hidden { display: none !important; }
+.muted { color: #9aa0a6; }
+.small { font-size: 12px; }
+.btn {
+  width: 100%; padding: 10px 14px; border-radius: 9px; border: 1px solid rgba(255,255,255,.12);
+  background: #232629; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px; transition: all .15s;
+}
+.btn:hover { border-color: #33aaff; background: #2a2e33; }
+.btn.primary { background: #1d6fd0; border-color: #1d6fd0; }
+.btn.primary:hover { background: #2a7de0; }
+.btn.discord { background: #5865f2; border-color: #5865f2; }
+.btn.discord:hover { background: #6670f5; }
+.btn.stop { background: #b3372f; border-color: #b3372f; }
+#join-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+#room-code {
+  padding: 10px 12px; border-radius: 9px; border: 1px solid rgba(255,255,255,.14);
+  background: #141517; color: #fff; font-size: 14px; outline: none;
+}
+#room-code:focus { border-color: #33aaff; }
+.error { margin-top: 10px; color: #ff7b6f; font-size: 13px; }
+.divider { display: flex; align-items: center; gap: 10px; margin: 18px 0 8px; color: #6b7075; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: rgba(255,255,255,.09); }
+.rooms { list-style: none; margin: 0; padding: 0; max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.rooms li button {
+  width: 100%; text-align: left; padding: 9px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,.1);
+  background: #1c1e21; color: #ddd; cursor: pointer; font-size: 13px;
+}
+.rooms li button:hover { border-color: #33aaff; }
+.row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 14px; }
+.view .btn { margin-top: 14px; }
+footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.06); display: flex; align-items: center; gap: 8px; color: #9aa0a6; font-size: 12px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #6b7075; display: inline-block; }
+.dot.on { background: #34c77b; }
+.dot.live { background: #ffb02e; }
+.row-actions { display: flex; gap: 10px; margin-top: 10px; }
+.row-actions .btn { flex: 1; margin-top: 0; }
+.btn.danger { background: #3a1c1c; border-color: #7a3a3a; color: #ff9b8f; }
+.btn.danger:hover { border-color: #ff7b6f; }

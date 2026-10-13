@@ -1,0 +1,5 @@
+{
+  "appBase": "https://<your-vercel>.vercel.app",
+  "bridgeOrigin": "https://<your-bridge>.onrender.com",
+  "roomId": "<serverCode>"
+}

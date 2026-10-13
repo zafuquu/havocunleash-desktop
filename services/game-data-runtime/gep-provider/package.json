@@ -1,0 +1,16 @@
+{
+  "name": "havoc-gep-provider",
+  "productName": "Havoc Game Data Provider",
+  "author": {
+    "name": "HavocUnleashed"
+  },
+  "version": "0.1.0",
+  "private": true,
+  "description": "ow-electron provider child: boots the Overwolf PackageManager (declared below) to load the official GEP package, and relays game events to the game-data runtime over stdout (NDJSON, protocol v1).",
+  "main": "index.js",
+  "overwolf": {
+    "packages": [
+      "gep"
+    ]
+  }
+}
