@@ -22,6 +22,14 @@
  */
 import type { HudRelayState } from "@havoc-unleash/contracts";
 
+/**
+ * How long a settled round waits for the engine's `round_settled` ceremony
+ * label before the neutral "Round Win" text fires. Live timing 2026-10-18:
+ * score → round_settled gap was 379-501 ms across rounds 1, 2 and 24 — 1200 ms
+ * leaves headroom without visibly delaying the Game Event.
+ */
+export const ROUND_WIN_LABEL_GRACE_MS = 1200;
+
 export interface BridgeEventState {
   matchWinner: "blue" | "red" | null;
   matchStarted: boolean;
@@ -35,6 +43,15 @@ export interface BridgeEventState {
    * board, and never re-armed by the next round starting.
    */
   roundWin: string | null;
+  /**
+   * A settled round waiting for the engine's `round_settled` classification
+   * before its `roundWin` fires: `{key, since}`. The runtime settles
+   * ~0.4-0.5 s AFTER the score that ends the round (live 2026-10-18: score
+   * 04:04:33.834 / round_settled 04:04:34.213), so emitting the neutral
+   * "Round Win" on the score made every ceremony (Thrifty/Ace/Clutch/Flawless)
+   * lose the race — the reported "events always show round win".
+   */
+  roundWinPending: { key: string; since: number } | null;
   /** Last spike state published (drives one spike event per outcome). */
   spike: "planted" | "defused" | "detonated" | null;
 }
@@ -46,6 +63,7 @@ export function initialBridgeEventState(): BridgeEventState {
     roundNumber: 0,
     killSeq: 0,
     roundWin: null,
+    roundWinPending: null,
     spike: null,
   };
 }
@@ -62,6 +80,7 @@ export interface BridgeEvent {
 export function deriveBridgeEvents(
   proj: HudRelayState,
   prev: BridgeEventState,
+  now: number = Date.now(),
 ): { events: BridgeEvent[]; next: BridgeEventState } {
   const next: BridgeEventState = { ...prev };
   const events: BridgeEvent[] = [];
@@ -83,6 +102,7 @@ export function deriveBridgeEvents(
     next.roundNumber = 0;
     next.killSeq = 0;
     next.roundWin = null;
+    next.roundWinPending = null;
   }
   if (proj.sessionPhase === "live" && next.matchStarted !== true) {
     next.matchStarted = true;
@@ -120,20 +140,34 @@ export function deriveBridgeEvents(
   if (settled !== null && roundEnd?.winner) {
     const settledKey = `${settled.round}:${settled.winner}`;
     if (settledKey !== next.roundWin) {
-      next.roundWin = settledKey;
       // PASS 7C: the ceremony label is only usable when it belongs to THIS
       // settled round (`gameEventRound`). A label from another round would put
       // the wrong ceremony text on this winner — the reported "my team won but
-      // FLAWLESS/ACE appeared on the enemy side". Unknown stays unknown: the
-      // neutral "Round Win" text is used when there is no owned classification.
-      const ownedLabel = proj.gameEventRound != null && proj.gameEventRound === settled.round
-        ? proj.gameEvent
-        : null;
-      ev("roundWin", {
-        roundNumber: settled.round,
-        winType: (ownedLabel ?? "Round Win").toLowerCase(),
-        winningCompetitorId: settled.winner,
-      });
+      // FLAWLESS/ACE appeared on the enemy side".
+      const ownedLabel =
+        proj.gameEventRound != null && proj.gameEventRound === settled.round ? proj.gameEvent : null;
+      if (ownedLabel != null && ownedLabel !== "") {
+        next.roundWin = settledKey;
+        next.roundWinPending = null;
+        ev("roundWin", {
+          roundNumber: settled.round,
+          winType: String(ownedLabel).toLowerCase(),
+          winningCompetitorId: settled.winner,
+        });
+      } else if (next.roundWinPending?.key !== settledKey) {
+        // Arm the grace: wait for the engine's round_settled classification
+        // (~0.4-0.5 s after the score, see BridgeEventState.roundWinPending)
+        // before falling back to the neutral ceremony text.
+        next.roundWinPending = { key: settledKey, since: now };
+      } else if (now - next.roundWinPending.since >= ROUND_WIN_LABEL_GRACE_MS) {
+        next.roundWin = settledKey;
+        next.roundWinPending = null;
+        ev("roundWin", {
+          roundNumber: settled.round,
+          winType: "round win",
+          winningCompetitorId: settled.winner,
+        });
+      }
     }
   }
 

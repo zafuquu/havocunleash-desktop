@@ -1,6 +1,6 @@
 # Architecture — audit hand-off map
 
-How this fork mirrors the audited HAVOC Desktop (v1.28.38) component-for-component.
+How each Havoc Unleash desktop component maps to the audited upstream (v1.28.38).
 
 | Audited upstream | This repo | Notes |
 |---|---|---|
@@ -31,7 +31,7 @@ original used against the cloud, wired to your replica pieces:
 | Desktop module | Talks to | Contract |
 |---|---|---|
 | `auth.ts` | `{appBase}/auth/login` + `{bridge}/electron/token` | PKCE S256 + `havoc-desktop://` deep link; bridge mints session cookie |
-| `trpc.ts` | `{bridge}/api/trpc/*` | `realtime.desktopRooms` / `desktopRequestAccess` / `desktopProducerTicket` / `rooms.getLimitsOfRoom` (batch `[{result:{data:{json}}}]`) |
+| `trpc.ts` | `{bridge}/api/trpc/*` | `realtime.desktopRooms` / `desktopRequestAccess` / `desktopRequestStatus` / `desktopCancelAccess` / `desktopProducerTicket` / `rooms.getLimitsOfRoom` (batch `[{result:{data:{json}}}]`); `awaitRoomAccess()` polls pending→accepted every 5 s (120 s cap, cancels on timeout — mirrors the original renderer's `useRoomAccess`) |
 | `producer.ts` | `{bridge}/api/socket/io` (Socket.IO, `auth:{ticket}`) | `game-data:producer:claim` `protocolVersion:3` → ack; publishes `game-data:fallback` snapshots |
 | `snapshot.ts` | bridge fallback | maps `HudRelayState` → `state.leftTeam/rightTeam/currentRound/players` (what `extractScores` + `OverlayPopout` read) |
 | `index.ts` | orchestration | register protocol, PKCE sign-in, restore session (safeStorage), connect producer, publish on change, overlay windows to `{appBase}/<room>/<overlay>?isPopout=true` |
@@ -43,6 +43,27 @@ HAVOC's separation. So the desktop only needs auth + producer.
 Follow the repo's `scripts/mock-bridge.cjs` + `HAVOC_DEV_SESSION=1` to run
 the whole loop locally against a fake bridge; point `HAVOC_BRIDGE_ORIGIN`
 at `G:\HU\server\game-bridge.mjs` for a real, Supabase-backed run.
+
+## Data sources (Phase 3 hybrid adapter)
+
+All capture paths implement one adapter contract — the desktop consumes the
+runtime's `/events`+`/facts`+`/health` wire on `runtimeOrigin` no matter who
+produces it (same shape as the original app's per-game data-source adapters,
+BLOB-AUDIT.md §6). `apps/desktop/src/main/dataSource.ts` owns the pure
+selection; pinned by `test/data-source-selection.test.mjs` +
+`test/config-hybrid.test.mjs`.
+
+| Kind | Trigger | Engine | Wire | Status |
+|---|---|---|---|---|
+| `native-runtime` | `captureExe` set | original `blob-game-data-runtime.exe` | upstream dialect, `:7413` | ✅ default production |
+| `builtin-runtime` | `captureExe` absent | fork runtime (GEP PackageManager-emulator provider) | fork dialect, `:7423` | ✅ dev / fallback |
+| `gep-direct-addon` | *(planned)* | GEP package direct-addon vs local Riot-client | same runtime wire | blocked — needs Riot dev app |
+| `riot-api` | *(planned)* | Riot local + web APIs (dev key) | mapped to facts | blocked — needs Riot dev key |
+| `mock-replay` | *(planned)* | recorded fact streams | same runtime wire | deterministic tests |
+
+Adding an adapter = spawn/plumbing entry in `index.ts` (next to
+`spawnRuntimeIfNeeded`) + one `DataSourceKind` + one selection test. The
+projection layer, snapshots, bridge push, and overlays never change.
 
 ## Known limitations / next steps
 

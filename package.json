@@ -2,7 +2,7 @@
   "name": "havoc-unleash",
   "version": "0.1.0",
   "private": true,
-  "description": "Clean-room replication of the HAVOC Desktop architecture: local game-data runtime, anchored Valorant overlay, HUD server.",
+  "description": "Havoc Unleash desktop app.",
   "license": "MIT",
   "type": "commonjs",
   "workspaces": [

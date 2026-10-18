@@ -60,12 +60,33 @@ export class HudServer {
   private lastBroadcast: unknown = null;
   /** The HTTP listener — kept so the server can be shut down (tests / quit path). */
   private server: http.Server | null = null;
+  // Local-first persistence (Phase 1): the latest broadcast frame is written
+  // through to disk (atomic tmp+rename, throttled) so an app restart repaints
+  // the overlay INSTANTLY from state/live-snapshot.json instead of waiting for
+  // the first live game frame. Never on the hot path: write failures are
+  // swallowed (the in-memory frame is authoritative).
+  private stateFile: string | null = null;
+  private persistTimer: NodeJS.Timeout | null = null;
 
   public constructor(
     private readonly port: number,
     private readonly publicDir: string,
     private readonly controls?: ShellControls,
-  ) {}
+    stateDir?: string,
+  ) {
+    if (stateDir) {
+      // Own the state layout up front (BLOB's DesktopRuntimeStorage pattern):
+      // Electron only creates userData itself, never its subfolders.
+      try {
+        fs.mkdirSync(stateDir, { recursive: true });
+        this.stateFile = path.join(stateDir, "live-snapshot.json");
+      } catch (error) {
+        logger.warn("hud-server", "state_dir_create_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
 
   public async start(): Promise<void> {
     const server = http.createServer((req, res) => {
@@ -115,11 +136,14 @@ export class HudServer {
     await new Promise<void>((resolve) => {
       server.listen(this.port, "127.0.0.1", () => resolve());
     });
+    this.restorePersistedBroadcast();
     logger.info("hud-server", "listening", { port: this.port });
   }
 
   /** Release the listener + push channels (tests and the app's quit path). */
   public async stop(): Promise<void> {
+    // Final flush: the quit path must not lose the newest frame.
+    this.flushBroadcastState();
     for (const ws of [...this.clients, ...this.broadcastClients]) {
       try {
         ws.close();
@@ -168,9 +192,59 @@ export class HudServer {
       observedAt: state?.observedAt ?? Date.now(),
       snapshot,
     };
+    this.scheduleBroadcastPersist();
     const payload = JSON.stringify(this.lastBroadcast);
     for (const ws of this.broadcastClients) {
       if (ws.readyState === ws.OPEN) ws.send(payload);
+    }
+  }
+
+  /* ------------------------- local-first persistence ------------------------ */
+
+  /** Restore the persisted frame BEFORE any live publish (instant repaint). */
+  private restorePersistedBroadcast(): void {
+    if (!this.stateFile) return;
+    try {
+      if (!fs.existsSync(this.stateFile)) return;
+      const parsed = JSON.parse(fs.readFileSync(this.stateFile, "utf8"));
+      if (parsed && typeof parsed === "object" && parsed.snapshot) {
+        this.lastBroadcast = parsed;
+        logger.info("hud-server", "broadcast_state_restored", {
+          observedAt: (parsed as { observedAt?: number }).observedAt ?? null,
+        });
+      }
+    } catch (error) {
+      logger.warn("hud-server", "broadcast_state_restore_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** Throttled (1/s) schedule — snapshots publish ~250ms; never queue up. */
+  private scheduleBroadcastPersist(): void {
+    if (!this.stateFile || this.persistTimer) return;
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      this.flushBroadcastState();
+    }, 1_000);
+    this.persistTimer.unref?.();
+  }
+
+  /** Atomic tmp+rename write of the latest frame; failures are non-fatal. */
+  private flushBroadcastState(): void {
+    if (!this.stateFile || this.lastBroadcast == null) return;
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+    try {
+      const tmp = `${this.stateFile}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(this.lastBroadcast));
+      fs.renameSync(tmp, this.stateFile);
+    } catch (error) {
+      logger.debug("hud-server", "broadcast_state_write_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

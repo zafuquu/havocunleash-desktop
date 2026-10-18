@@ -34,7 +34,9 @@ process.env.TMP = fixtureDir;
 process.env.LOCALAPPDATA = fixtureDir;
 
 const { ValProjectionSession } = await import("../dist/main/projection.js");
-const { deriveBridgeEvents, initialBridgeEventState } = await import("../dist/main/gameEvents.js");
+const { deriveBridgeEvents, initialBridgeEventState, ROUND_WIN_LABEL_GRACE_MS } = await import(
+  "../dist/main/gameEvents.js"
+);
 
 const state = (p) => p.snapshotValue();
 const types = (events) => events.map((e) => e.type);
@@ -290,7 +292,13 @@ test("Game Event — the match end is emitted once, and a new match re-arms the 
   p.applyFact("round_phase", "combat");
   p.applyFact("round_phase", "end");
   p.applyScore(0, 1, "ge-6");
-  const e = deriveBridgeEvents(state(p), d.next);
+  // No ceremony label is attributable yet: the neutral text waits the label
+  // grace instead of racing ahead of the engine's round_settled (PASS 7C).
+  const e1 = deriveBridgeEvents(state(p), d.next);
+  assert.deepEqual(roundWins(e1.events), [], "the score settle alone does not fire the neutral text yet");
+  // The engine never names the round — the neutral text fires exactly once
+  // when the grace elapses.
+  const e = deriveBridgeEvents(state(p), e1.next, Date.now() + ROUND_WIN_LABEL_GRACE_MS + 1);
   assert.deepEqual(roundWins(e.events).map((x) => x.data.roundNumber), [1]);
 });
 
@@ -307,11 +315,50 @@ test("Game Event — the score-derived (no round fact) path also emits exactly o
   assert.equal(st.round.number, 2, "the derived round boundary is on the board");
   assert.equal(st.roundEnd.winner, "blue", "together with the settled result");
 
-  const b = deriveBridgeEvents(st, a.next);
+  // The score-derived settle carries no ceremony label: the neutral text now
+  // waits inside the label grace (so a ~0.4 s-later round_settled can win the
+  // race); only the round boundary fires immediately.
+  const b1 = deriveBridgeEvents(st, a.next);
+  assert.deepEqual(types(b1.events), ["roundStart"], "round 2 starts; the round win waits for the label grace");
+  assert.deepEqual(roundWins(b1.events), []);
+
+  const b = deriveBridgeEvents(st, b1.next, Date.now() + ROUND_WIN_LABEL_GRACE_MS + 1);
   assert.deepEqual(roundWins(b.events).map((e) => e.data.roundNumber), [1], "exactly one event for round 1");
-  assert.deepEqual(types(b.events), ["roundStart", "roundWin"], "round 2 starts, round 1 wins once");
+  assert.deepEqual(types(b.events), ["roundWin"], "only the deferred round win fires past the grace");
 
   const c = deriveBridgeEvents(state(p), b.next);
   assert.equal(roundWins(c.events).length, 0, "no replay while the next round is being played");
+});
+
+test("Game Event — the engine's round_settled ceremony wins the race over the neutral text", () => {
+  // The reported live defect (2026-10-18): the score settle emitted the neutral
+  // "Round Win" BEFORE the engine's classification arrived (~0.4 s later), so
+  // every Thrifty/Ace/Clutch/Flawless lost the race and the banner text was
+  // always "round win".
+  const p = fullBoard("ge-ceremony");
+  p.applyFact("round_phase", "combat");
+  kill(p, "Blue0#0001", "Red0#0001");
+  p.applyScore(1, 0, "ge-ceremony"); // R1 settles; no ceremony label yet
+  const a1 = deriveBridgeEvents(state(p), initialBridgeEventState());
+  assert.deepEqual(
+    roundWins(a1.events).map((e) => e.data.roundNumber),
+    [],
+    "the neutral 'Round Win' waits inside the grace instead of racing ahead",
+  );
+
+  // The engine names the round inside the grace: the ceremony label must win.
+  p.applyFact("round_settled", {
+    roundNumber: 1,
+    winnerStartTeam: 0,
+    winningSide: "attack",
+    winningReason: "elimination",
+    winType: "Thrifty",
+  });
+  const a2 = deriveBridgeEvents(state(p), a1.next);
+  assert.deepEqual(
+    roundWins(a2.events).map((e) => [e.data.roundNumber, e.data.winType]),
+    [[1, "thrifty"]],
+    "the ceremony label fires immediately when the engine names the round",
+  );
 });
 

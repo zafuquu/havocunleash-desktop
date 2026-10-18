@@ -179,6 +179,21 @@ class RuntimeHub {
   private killfeed: unknown[] = [];
   /** GEP "me" player id — routes live local_health updates to the right player. */
   private localPlayerId: string | null = null;
+  /**
+   * The LOCAL player's GEP start team (0/1), from the `me`-routed player id
+   * matched against the scoreboard roster. Every published side must be
+   * VIEWER-anchored (Blue = the local player's team) — native team_0
+   * ordering inverted the scoreline/panels for a non-team-1 viewer
+   * (live 2026-10-18: "enemy scored 1:2, a split second later it swapped
+   * to 2:1" — the native-ordered snapshot heartbeat fought the anchored
+   * fact score and the roster sides, corrupting the round-delta
+   * bookkeeping behind the round-reason strip).
+   */
+  private localTeam(): 0 | 1 | null {
+    if (!this.localPlayerId) return null;
+    const local = [...this.players.values()].find((p) => p.playerId === this.localPlayerId);
+    return local && (local.team === 0 || local.team === 1) ? local.team : null;
+  }
 
   constructor() {
     const source = (process.env.HAVOC_SOURCE ?? "").toLowerCase();
@@ -224,6 +239,23 @@ class RuntimeHub {
           winType: result.winType,
           winTypeLabel: result.winTypeLabel,
           plantSite: result.plantSite ?? null,
+          // Clutch-card identity (original-desktop parity): WHO clutched
+          // (highlightOccurrencePlayerId = the player id) resolved to the
+          // roster's name/agent/KDA so the site can render the agent image
+          // + K/D/A instead of the plain attacker/defender line.
+          highlightPlayer: (() => {
+            const hpId = result.highlightOccurrencePlayerId;
+            if (!hpId) return null;
+            const p = [...this.players.values()].find((x) => x.playerId === hpId);
+            if (!p) return null;
+            return {
+              name: p.tagline ? `${p.name}#${p.tagline}` : p.name,
+              agent: p.agent ?? null,
+              kills: p.kills,
+              deaths: p.deaths,
+              assists: p.assists,
+            };
+          })(),
         },
       },
     });
@@ -339,7 +371,15 @@ class RuntimeHub {
       } else if (fact.key === "match_score") {
         const rec = fact.value as { team_0?: unknown; team_1?: unknown };
         if (typeof rec?.team_0 === "number" && typeof rec?.team_1 === "number") {
-          this.score = { blue: rec.team_0, red: rec.team_1 };
+          // Native GEP team numbers -> VIEWER-anchored blue/red (Blue = the
+          // local player's start team; default team_1 = viewer, the
+          // historically verified contract). The snapshot score must agree
+          // with the projection's own anchored score — native order flipped
+          // the scoreline for a non-team-1 viewer (live 2026-10-18:
+          // "1:2 swaps to 2:1 a split second later").
+          const lt = this.localTeam() ?? 1;
+          this.score =
+            lt === 0 ? { blue: rec.team_0, red: rec.team_1 } : { blue: rec.team_1, red: rec.team_0 };
           this.sessionPhase = "live";
           this.revision += 1;
           this.emitSessionSnapshot();
@@ -480,6 +520,9 @@ class RuntimeHub {
                 assists: p.assists,
                 alive: p.isAlive,
                 credits: p.credits,
+                // Spike flag: the carrier's start team is the round's attacking
+                // side ground truth (settlement replaces its parity guess).
+                spike: p.hasSpike,
               })));
               break;
             case "kill_feed": {
@@ -547,13 +590,22 @@ class RuntimeHub {
       const list = [...this.players.values()];
       const knownTeam = list.filter((p) => p.team === 0 || p.team === 1);
       const unknownTeam = list.filter((p) => p.team !== 0 && p.team !== 1);
+      // Blue/Red are VIEWER-anchored (Blue = the local player's team): the
+      // site renders Blue as LEFT and the projection relays the score
+      // viewer-left. Native team_0 ordering flipped the roster sides for a
+      // non-team-1 viewer — the desktop's snapshot-team merge and its
+      // scoreboard-fact anchoring then fought each other, swapping the
+      // panels/score on every heartbeat (live 2026-10-18) and corrupting
+      // the score-delta round bookkeeping (blank/incorrect strip icons).
+      const localTeam = this.localTeam();
       teams = [];
-      for (const t of [0, 1] as const) {
+      for (const i of [0, 1] as const) {
+        const nativeTeam = localTeam === 1 ? (i === 0 ? 1 : 0) : i;
         const side = knownTeam
-          .filter((p) => p.team === t)
+          .filter((p) => p.team === nativeTeam)
           .sort((a, b) => (a.observerSlot ?? 99) - (b.observerSlot ?? 99))
-          .map(playerToSnapshot);
-        if (side.length > 0) teams.push({ teamId: t === 0 ? "Blue" : "Red", players: side });
+          .map((p) => ({ ...playerToSnapshot(p), teamIndex: i }));
+        if (side.length > 0) teams.push({ teamId: i === 0 ? "Blue" : "Red", players: side });
       }
       if (unknownTeam.length > 0) {
         teams.push({ teamId: "Unknown", players: unknownTeam.map(playerToSnapshot) });

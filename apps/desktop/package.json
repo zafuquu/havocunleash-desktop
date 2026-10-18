@@ -3,14 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
-  "description": "Electron replica of HAVOC Desktop: PKCE auth -> producer -> Supabase bridge, plus anchored overlay/HUD.",
+  "description": "Havoc Unleash desktop app.",
   "main": "./dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "npm run build && electron .",
     "start": "electron .",
     "pack": "node ../../scripts/pack-desktop.mjs",
-    "test": "node --test test/config-hybrid.test.mjs test/projection-boot.test.mjs test/projection-roster-contract.test.mjs test/hud-server-crash-safety.test.mjs test/runtime-stream-resilience.test.mjs test/snapshot-spike-plant.test.mjs test/projection-side-defuse.test.mjs test/acceptance-fixes.test.mjs test/round-lifecycle.test.mjs test/game-event.test.mjs test/r1-buy-hydration.test.mjs test/pass6-panels.test.mjs test/cross-match-lifecycle.test.mjs test/player-revive.test.mjs test/partial-telemetry.test.mjs test/round-classification-attribution.test.mjs test/pass7d-hydration-scene.test.mjs test/pass8-self-kill.test.mjs test/build-info.test.mjs test/log-rotation.test.mjs test/support-bundle.test.mjs",
+    "test": "node --test test/config-hybrid.test.mjs test/rea-parity.test.mjs test/projection-boot.test.mjs test/projection-roster-contract.test.mjs test/hud-server-crash-safety.test.mjs test/local-snapshot-persistence.test.mjs test/data-source-selection.test.mjs test/runtime-stream-resilience.test.mjs test/snapshot-spike-plant.test.mjs test/projection-side-defuse.test.mjs test/acceptance-fixes.test.mjs test/round-lifecycle.test.mjs test/game-event.test.mjs test/r1-buy-hydration.test.mjs test/pass6-panels.test.mjs test/cross-match-lifecycle.test.mjs test/player-revive.test.mjs test/partial-telemetry.test.mjs test/round-classification-attribution.test.mjs test/pass7d-hydration-scene.test.mjs test/pass8-self-kill.test.mjs test/build-info.test.mjs test/log-rotation.test.mjs test/support-bundle.test.mjs",
     "ow:start": "npm run build && node ../../scripts/ow-start.mjs",
     "ow:install": "npx install-ow-electron"
   },
@@ -40,13 +40,20 @@
     "win": {
       "target": [
         {
-          "target": "portable",
+          "target": "nsis",
           "arch": "x64"
         }
       ]
     },
-    "portable": {
-      "artifactName": "Havoc-Unleash-${version}.exe"
+    "nsis": {
+      "artifactName": "Havoc Unleash Setup.exe",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Havoc Unleash",
+      "uninstallDisplayName": "Havoc Unleash"
     }
   },
   "dependencies": {

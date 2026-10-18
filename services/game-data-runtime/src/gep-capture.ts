@@ -213,13 +213,20 @@ function parseMaybeJsonObject(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
-/** Normalize a GEP score value ({team_0,team_1} | {blue,red} | "a-b") to team_0/team_1. */
+/** Normalize a NATIVE GEP score value ({team_0,team_1} | {blue,red} | "a-b") to team_0/team_1. */
 function normalizeScore(value: unknown): { team_0: number; team_1: number } | null {
   const asObject = parseMaybeJsonObject(value);
   if (asObject) {
     const t0 = Number(asObject.team_0 ?? asObject.blue);
     const t1 = Number(asObject.team_1 ?? asObject.red);
     if (Number.isFinite(t0) && Number.isFinite(t1)) return { team_0: t0, team_1: t1 };
+    // NOTE: the viewer-relative {won, lost} form (GEP `score`, riot presence)
+    // is deliberately NOT normalized here. Relabeling it as
+    // {team_0: lost, team_1: won} made every consumer anchor it a SECOND time
+    // via the viewer's GEP team number — correct only while the viewer
+    // happened to be team 1; a team-0 viewer (live 2026-10-18) got score,
+    // round history and ceremony winners all inverted. The caller forwards
+    // {won, lost} under its own fact key instead.
     return null;
   }
   if (typeof value === "string") {
@@ -335,6 +342,21 @@ function factFromInfoUpdate(item: GepItem, emit: ProviderEmit): void {
     return;
   }
   if (low === "score" || low === "match_score") {
+    // Dialect split (live 2026-10-18 inversion fix): native `match_score`
+    // {team_0, team_1} keeps GEP's team numbering, but the viewer-relative
+    // `score` {won, lost} MUST stay under its own key — the projection
+    // dispatches on shape ({won,lost} = blue/won directly; {team_0,team_1}
+    // = anchored by the viewer's is_local team). Relabeling won/lost as
+    // team_0/team_1 here double-anchored it downstream.
+    const asObject = parseMaybeJsonObject(value);
+    if (asObject && asObject.won !== undefined && asObject.lost !== undefined) {
+      const won = Number(asObject.won);
+      const lost = Number(asObject.lost);
+      if (Number.isFinite(won) && Number.isFinite(lost)) {
+        pushInfo("score", { won, lost });
+        return;
+      }
+    }
     const score = normalizeScore(value);
     if (score) pushInfo("match_score", score);
     return;
@@ -365,8 +387,12 @@ function factFromInfoUpdate(item: GepItem, emit: ProviderEmit): void {
     else if (v.includes("defuse")) emit({ kind: "new_game_event", key: "spike_defused", value: true });
     return;
   }
-  // Pass through other structured info so nothing is lost.
+  // Pass through other structured info so nothing is lost — objects AND plain
+  // strings. The `me` feature's `player_name` (the local player's identity!)
+  // arrives as a STRING and was silently dropped by the object-only check,
+  // which left the projector's viewer anchor dependent on a scoreboard row.
   if (value != null && typeof value === "object") pushInfo(low, value);
+  else if (typeof value === "string" && value.length > 0 && value.length <= 1024) pushInfo(low, value);
 }
 
 /** One gep.GameEvent -> ProviderFact. */
@@ -893,6 +919,15 @@ export class GepProviderSource {
               `& '${ps(exe)}' '${ps(providerDir + "\\index.js")}' --session '${ps(sessionPath)}'`,
             ]
           : [
+              // Electron mode: UAC rebuilds the elevated child's environment
+              // from the spawner's, which carries ow-electron's headless
+              // marker ELECTRON_NO_ATTACH_CONSOLE — with it set, every
+              // BrowserWindow navigation fails ERR_FAILED (-2) (file://, data:
+              // AND http://) because the renderer/network services never come
+              // up, which killed the renderer-host fallback on the elevated
+              // path. Same fix as launchDirect: strip it ($env:X = $null
+              // removes the variable from the process env).
+              "$env:ELECTRON_NO_ATTACH_CONSOLE = $null",
               `& '${ps(exe)}' '${ps(providerDir)}' --session '${ps(sessionPath)}'`,
             ]),
       ].join("\r\n");
@@ -1328,17 +1363,27 @@ export class GepProviderSource {
         this.evaluateTelemetryState();
         this.emitProviderStatus("features_set", msg.payload);
         return;
-      case "info-update":
+      case "info-update": {
+        // Telemetry proof lives here too: the ELECTRON package path delivers
+        // kebab-kind messages, and only the underscore aliases used to stamp
+        // lastGameDataAt/firstInfoUpdateAt — so a fully healthy stream stayed
+        // FEATURES_SET with firstInfoUpdateAt:null forever (live 2026-10-18).
+        this.lastGameDataAt = Date.now();
+        if (this.firstInfoUpdateAt === null) this.firstInfoUpdateAt = this.lastGameDataAt;
+        this.evaluateTelemetryState();
         if (msg.payload != null && typeof msg.payload === "object") {
           this.watchPluginStatus(msg.payload as GepItem);
           factFromInfoUpdate(msg.payload as GepItem, this.emit);
         }
         return;
-      case "game-event":
+      }
+      case "game-event": {
+        this.lastGameDataAt = Date.now();
         if (msg.payload != null && typeof msg.payload === "object") {
           factFromGameEvent(msg.payload as GepItem, this.emit);
         }
         return;
+      }
       case "info-dump":
         factFromInfoDump(msg.payload, this.emit);
         return;

@@ -1,6 +1,6 @@
 /**
- * Electron entry — HAVOC Desktop replica.
- * Orchestrates the full producer pipeline matching the audited original:
+ * Electron entry — Havoc Unleash desktop.
+ * Orchestrates the full producer pipeline:
  *   register `havoc-desktop://` protocol -> PKCE sign-in -> room access ->
  *   producer ticket -> Socket.IO claim -> publish game snapshots to the
  *   bridge -> website reads Supabase + overlay popout windows.
@@ -31,6 +31,7 @@ import { ProducerClient, type ProducerRoom } from "./producer";
 import { getBuildInfo } from "./buildInfo";
 import { createSupportBundle } from "./supportBundle";
 import { toGameSnapshot } from "./snapshot";
+import { selectDataSource } from "./dataSource";
 import { deriveBridgeEvents, initialBridgeEventState } from "./gameEvents";
 
 let cfg: AppConfig;
@@ -247,6 +248,7 @@ function spawnRuntimeIfNeeded(): void {
         pid: runtimeChild.pid,
         exe: cfg.captureExe,
         origin: cfg.runtimeOrigin,
+        source: selectDataSource(cfg).kind,
       });
     } catch (error) {
       logger.error("app", "capture_engine_spawn_failed", { error: String(error) });
@@ -372,7 +374,9 @@ async function connectProducer(): Promise<void> {
       logger.info("producer", "auto_register_configured_room", { roomId: wantRoomId });
       try {
         const req = await trpc.desktopRequestAccess({ roomId: wantRoomId });
-        await trpc.desktopRequestStatus(req.requestId);
+        // Wait out a pending approval (instant on the HU bridge, which
+        // auto-accepts; polls like the original app against a real bridge).
+        await trpc.awaitRoomAccess(req.requestId);
         room = await trpc.findRoomById(wantRoomId);
       } catch (error) {
         logger.error("producer", "auto_register_failed", { error: String(error) });
@@ -462,15 +466,22 @@ const shellControls: ShellControls = {
       );
       if (!room) {
         // Unknown server code: the bridge auto-registers rooms on request.
-        // Original flow: request access → poll status → connect.
+        // Original flow: request access → poll status (the old renderer polls
+        // every 5s until the website dashboard approves) → connect.
         const request = await trpc.desktopRequestAccess({
           roomId,
           roomName: roomId,
           roomGame: "VAL",
         });
-        const status = await trpc.desktopRequestStatus(request.requestId);
+        const status = await trpc.awaitRoomAccess(request.requestId);
         if (status.status !== "accepted") {
-          return { ok: false, error: "The bridge denied access to that room." };
+          return {
+            ok: false,
+            error:
+              status.status === "pending"
+                ? "Timed out waiting for room approval on the website."
+                : "The bridge denied access to that room.",
+          };
         }
         room = {
           roomId: status.roomId ?? roomId,
@@ -596,7 +607,7 @@ async function initiateSignIn(): Promise<void> {
 /* ------------------------------- Overlay ---------------------------------- */
 
 function openOverlayPopout(room: ProducerRoom): void {
-  const url = overlayPopoutUrl(cfg.overlayOrigin, room.roomId, room.overlayId ?? "ingame-hud");
+  const url = overlayPopoutUrl(cfg.overlayOrigin, room.roomId, room.overlayId ?? "ingame-hud", "default", cfg.bridgeOrigin);
   if (!overlayWindow || overlayWindow.isDestroyed()) {
     overlayWindow = new BrowserWindow({
       show: false, frame: false, transparent: true, hasShadow: false,
@@ -660,7 +671,14 @@ async function boot(): Promise<void> {
   logger.info("app", "bootstrap_started", { win32Bridge: isWin32BridgeAvailable() });
 
   projection = new ValProjectionSession();
-  hudServer = new HudServer(cfg.hudPort, hudPublicDir(), shellControls);
+  hudServer = new HudServer(
+    cfg.hudPort,
+    hudPublicDir(),
+    shellControls,
+    // Local-first: persist the latest broadcast frame under userData/state so
+    // a restart repaints the overlay instantly (see hudServer persistence).
+    path.join(app.getPath("userData"), "state"),
+  );
   gateway = new LocalGateway(cfg.gatewayPort, () => {});
   await Promise.all([hudServer.start(), gateway.start()]);
 
@@ -734,7 +752,11 @@ async function boot(): Promise<void> {
   });
 
   spawnRuntimeIfNeeded();
-  createShellWindow();
+  // HAVOC_APP_WINDOW (REA parity): "hidden"/"overlay" boot as a background
+  // companion — no shell window until the user clicks the app again
+  // (second-instance handler below recreates it). "visible" (default)
+  // preserves the current show-at-boot behaviour.
+  if (cfg.appWindow === "visible") createShellWindow();
   setInterval(followGameWindow, FOLLOW_INTERVAL_MS);
   void client!.start();
 

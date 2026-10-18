@@ -279,8 +279,10 @@ export class ValRoundSettlement {
     const board = this.reconcileLateEvidence(pending);
     const outcome = this.resolveRoundOutcome(pending, board);
     const winnerStartTeam = outcome.winnerStartTeam;
-    const winningSide =
-      valorantAttackerForRound(roundNumber) === `team_${winnerStartTeam}` ? "attack" : "defense";
+    // Attacker side for this round: observed spike-carrier parity first
+    // (the carrier is always an attacker), hardcoded parity only as fallback.
+    const attackerTeamForRound: NativeTeam = this.attackerTeamFor(roundNumber);
+    const winningSide = winnerStartTeam === attackerTeamForRound ? "attack" : "defense";
     const enrichment = this.enrichment(
       pending.analysis,
       winnerStartTeam,
@@ -339,6 +341,7 @@ export class ValRoundSettlement {
     }
     if (
       winners.length > 0 &&
+      losers.length > 0 &&
       winners.every((player) => !analysis.diedPlayers.has(player.occurrencePlayerId))
     ) {
       return { highlightOccurrencePlayerId: null, winType: "Flawless", winTypeLabel: "Flawless" };
@@ -346,10 +349,47 @@ export class ValRoundSettlement {
     const average = (team: NativeTeam, count: number) =>
       [...analysis.loadouts[team].values()].reduce((sum, value) => sum + value, 0) /
       Math.max(1, count);
-    if (average(losingTeam, losers.length) - average(winningTeam, winners.length) >= 2_000) {
+    // Both sides must be OBSERVED: with an empty winning team (solo-lobby
+    // opponent rows never arrive) the winning average is 0 and any real loser
+    // loadout >= 2000 produced a false "Thrifty" on EVERY opponent win
+    // (live 2026-10-18 custom lobby).
+    if (
+      winners.length > 0 &&
+      losers.length > 0 &&
+      average(losingTeam, losers.length) - average(winningTeam, winners.length) >= 2_000
+    ) {
       return { highlightOccurrencePlayerId: null, winType: "Thrifty", winTypeLabel: "Thrifty" };
     }
     return { highlightOccurrencePlayerId: null, winType: "Normal", winTypeLabel: "Round Win" };
+  }
+
+  /**
+   * The START TEAM observed carrying the spike (the carrier is always on the
+   * ATTACKING side) — per-round ground truth replacing the parity guess that
+   * assumed team_0 starts attacking. That parity is lobby-dependent; when it
+   * flips, timeout rounds misclassify as elimination (kills icon) and the
+   * ATTACKER/DEFENDER win labels come out wrong (live 2026-10-18).
+   */
+  private observedAttackerStartTeam: NativeTeam | null = null;
+  private observedCarrierRound = 0;
+  /**
+   * Records the spike carrier's start team + the round it was observed in.
+   * Sides ALTERNATE every round, so the attacker side for any round in the
+   * same half is derived from the observation's parity — covering defense
+   * rounds where no carrier exists (solo lobbies: the enemy roster is empty).
+   * A post-halftime carry refreshes the anchor automatically.
+   */
+  public setObservedAttackerStartTeam(team: NativeTeam, round: number): void {
+    this.observedAttackerStartTeam = team;
+    this.observedCarrierRound = round > 0 ? round : 0;
+  }
+  /** Attacker side of `round`: carrier-parity first, hardcoded parity fallback. */
+  private attackerTeamFor(round: number): NativeTeam {
+    if (this.observedAttackerStartTeam != null && this.observedCarrierRound > 0) {
+      const sameParity = (((round - this.observedCarrierRound) % 2) + 2) % 2 === 0;
+      return sameParity ? this.observedAttackerStartTeam : this.observedAttackerStartTeam === 0 ? 1 : 0;
+    }
+    return valorantAttackerForRound(round) === "team_0" ? 0 : 1;
   }
 
   private effectiveRoundKills(analysis: RoundAnalysis, playerId: string): number {
@@ -362,8 +402,7 @@ export class ValRoundSettlement {
     pending: PendingSettlement,
     board: PendingSettlement["boardAtScore"],
   ): { winnerStartTeam: NativeTeam; winningReason: WinningReason } {
-    const attackerStartTeam: NativeTeam =
-      valorantAttackerForRound(pending.roundNumber) === "team_0" ? 0 : 1;
+    const attackerStartTeam: NativeTeam = this.attackerTeamFor(pending.roundNumber);
     const terminalOutcome = pending.spike.terminalOutcome;
 
     // A terminal spike event owns both the winner and reason. Blast deaths and scoreboard timing
@@ -384,10 +423,20 @@ export class ValRoundSettlement {
     if (scannerReason) return { winnerStartTeam, winningReason: scannerReason };
     const planted = pending.spike.plantSite != null || pending.spike.plantObserved;
     if (!planted) {
+      // A defense win with no plant can ONLY be the clock when NO attacker
+      // rows were observed at all (solo/incomplete lobbies: aliveAttackers is
+      // vacuously 0 because the opposing roster never arrived — every such
+      // round was misclassified "elimination", showing the kills icon for
+      // out-of-time wins; live 2026-10-18 custom lobby).
+      const observedAttackers = [...pending.analysis.players.values()].filter(
+        (player) => player.startTeam === attackerStartTeam,
+      ).length;
       return {
         winnerStartTeam,
         winningReason:
-          winningSide === "defense" && board.aliveAttackers > 0 ? "timeout" : "elimination",
+          winningSide === "defense" && (board.aliveAttackers > 0 || observedAttackers === 0)
+            ? "timeout"
+            : "elimination",
       };
     }
     if (winningSide === "defense") return { winnerStartTeam, winningReason: "defused" };

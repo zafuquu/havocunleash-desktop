@@ -154,6 +154,22 @@ export const hudRelayStateSchema = z.object({
       winner: z.enum(["blue", "red"]).nullable(),
       reason: z.enum(["elimination", "detonation", "defusion", "time"]).nullable(),
       winnerSide: z.enum(["attacker", "defender"]).nullable().optional(),
+      /** The settlement's ceremony label for THIS round (mirrors roundHistory[].label). */
+      label: z.string().nullish(),
+      /**
+       * The round's highlight/clutch player (original-desktop parity): the agent
+       * + K/D/A the ceremony card shows instead of the plain attacker/defender
+       * line on a 1vX clutch.
+       */
+      highlightPlayer: z
+        .object({
+          name: z.string(),
+          agent: z.string().nullable(),
+          kills: z.number().nullable(),
+          deaths: z.number().nullable(),
+          assists: z.number().nullable(),
+        })
+        .nullish(),
     })
     .nullable()
     .default(null),
@@ -168,6 +184,14 @@ export const hudRelayStateSchema = z.object({
         round: z.number().int().positive(),
         winner: z.enum(["blue", "red"]),
         reason: z.enum(["elimination", "detonation", "defusion", "time"]),
+        /**
+         * Ceremony classification for THIS round when the engine settled it
+         * ("Ace" | "Team Ace" | "Clutch" | "Flawless" | "Thrifty"), else null.
+         * The site's round-history strip icons key on this — `reason` alone
+         * (elimination/time/...) can never express a ceremony, which is why
+         * history icons rendered wrong before.
+         */
+        label: z.string().nullish(),
       }),
     )
     .max(24)

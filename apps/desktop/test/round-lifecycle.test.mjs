@@ -165,6 +165,8 @@ test("PASS 1 — joining mid-match never invents the rounds that were missed", (
   assert.deepEqual(st.roundHistory, [], "and never enters the timeline strip");
   assert.equal(st.round.number, 7, "the round in progress is derivable: 4 + 2 + 1");
   assert.equal(snap(p).state.scene, "ingame-hud", "mid-match join stays on the HUD");
+});
+
 /* -------------------- PASS 2A: match boundary (K/D/A) ---------------------- */
 
 test("PASS 2A — a new match starts K/D/A fresh and accumulates exactly once", () => {
@@ -456,8 +458,6 @@ test("live 2026-09-25 replay — the derived rounds match the engine's own numbe
   assert.equal(state(p).round.number, 4, "exactly as the engine reports");
   p.s.roundEndedAt = Date.now() - 6000;
   assert.equal(snap(p).state.scene, "buy-round", "02:10:27 — R4 buy");
-});
-
 });
 
 

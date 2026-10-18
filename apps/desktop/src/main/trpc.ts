@@ -1,9 +1,10 @@
 /**
- * Minimal tRPC batch client for the replica bridge.
+ * Minimal tRPC batch client for the bridge.
  * The bridge (server/game-bridge.mjs) speaks tRPC v10 batch envelopes:
  *   GET/POST /api/trpc/<procedure>  with input as {json} envelopes.
  * Procedures used by the desktop: realtime.desktopRooms / desktopRequestAccess /
- * desktopRequestStatus / desktopProducerTicket / rooms.getLimitsOfRoom.
+ * desktopRequestStatus / desktopCancelAccess / desktopProducerTicket /
+ * rooms.getLimitsOfRoom.
  */
 import { randomUUID } from "node:crypto";
 
@@ -79,8 +80,48 @@ export class TrpcClient {
     return this.call("realtime.desktopProducerTicket", input, "POST");
   }
 
-  public getLimitsOfRoom(): Promise<{ specialLimits: unknown }> {
-    return this.call("rooms.getLimitsOfRoom", {}, "GET");
+  /**
+   * Cancels a pending access request (the original app exposes this as
+   * `api.cancelRoomRequest`). The bridge treats it as best-effort — we use it
+   * so a timed-out approval poll never leaves a dangling request behind.
+   */
+  public desktopCancelAccess(requestId: string): Promise<null> {
+    return this.call("realtime.desktopCancelAccess", { requestId }, "POST");
+  }
+
+  public getLimitsOfRoom(roomId: string): Promise<{ specialLimits: unknown }> {
+    return this.call("rooms.getLimitsOfRoom", { roomId }, "GET");
+  }
+
+  /**
+   * Room-access approval poll (original flow: request → "pending" → the website
+   * dashboard approves → "accepted"; the old renderer polled every 5s).
+   * Returns as soon as the request leaves "pending". On timeout the request is
+   * cancelled best-effort so the bridge doesn't keep a dangling approval.
+   */
+  public async awaitRoomAccess(
+    requestId: string,
+    opts: { intervalMs?: number; timeoutMs?: number } = {},
+  ): Promise<{
+    requestId: string;
+    status: string;
+    roomId?: string | null;
+    roomName?: string;
+    roomGame?: string | null;
+    overlayId?: string | null;
+  }> {
+    const intervalMs = opts.intervalMs ?? 5_000;
+    const timeoutMs = opts.timeoutMs ?? 120_000;
+    const deadline = Date.now() + timeoutMs;
+    let status = await this.desktopRequestStatus(requestId);
+    while (status.status === "pending" && Date.now() < deadline) {
+      await sleep(intervalMs);
+      status = await this.desktopRequestStatus(requestId);
+    }
+    if (status.status === "pending") {
+      await this.desktopCancelAccess(requestId).catch(() => null);
+    }
+    return status;
   }
 
   public async listAndPick(): Promise<RealtimeRoom | null> {
@@ -117,4 +158,8 @@ export class TrpcClient {
 interface TrpcEnvelope {
   result?: { data: { json: unknown } };
   error?: string;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

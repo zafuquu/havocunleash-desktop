@@ -11,13 +11,21 @@ const envSchema = z.object({
   HAVOC_CAPTURE_EXE: z.string().default(""),
   HAVOC_BRIDGE_ORIGIN: z.string().default(""),
   HAVOC_APP_BASE: z.string().default(""),
-  // The exact deep-link protocol the replica website fires on login.
+  // The exact deep-link protocol the website fires on login.
   HAVOC_DESKTOP_PROTOCOL: z.string().default("havoc-desktop"),
   HAVOC_ROOM_ID: z.string().default(""),
   HAVOC_GAME_WINDOW_TITLE: z.string().min(1).default("VALORANT"),
   HAVOC_GATEWAY_PORT: z.coerce.number().default(7155),
-  HAVOC_HUD_PORT: z.coerce.number().default(7103),
+  HAVOC_HUD_PORT: z.coerce.number().optional(),
+  /** BlobDesktop-REA name for the same port (resolved after HAVOC_HUD_PORT). */
+  HAVOC_APP_PORT: z.coerce.number().optional(),
   HAVOC_ANCHOR_OVERLAY: z.string().default("0"),
+  /**
+   * REA window mode: "hidden"/"overlay" boot as a background companion (no
+   * shell window; clicking the app again reveals it), "visible" shows the
+   * shell at boot (default — current behaviour).
+   */
+  HAVOC_APP_WINDOW: z.enum(["hidden", "visible", "overlay"]).default("visible"),
   HAVOC_CONFIG: z.string().default(""),
   HAVOC_DEV_SESSION: z.string().default(""),
   /** Run the Overwolf GEP provider elevated (UAC), like the original app. */
@@ -52,6 +60,7 @@ export interface AppConfig {
   readonly hudPort: number;
   readonly hudOrigin: string;
   readonly anchorOverlay: boolean;
+  readonly appWindow: "hidden" | "visible" | "overlay";
   readonly skipLogin: boolean;
   /** Launch the GEP provider elevated (original-style UAC). Default: on. */
   readonly elevateGep: boolean;
@@ -62,6 +71,7 @@ type Overrides = {
   bridgeOrigin?: string;
   roomId?: string;
   captureExe?: string;
+  appWindow?: "hidden" | "visible" | "overlay";
 };
 
 function firstTruthy(...values: (string | undefined)[]): string | undefined {
@@ -96,6 +106,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const runtimeOrigin = captureExe
     ? "http://127.0.0.1:7413"
     : `http://127.0.0.1:${p.HAVOC_RUNTIME_PORT}`;
+  const hudPort = p.HAVOC_HUD_PORT ?? p.HAVOC_APP_PORT ?? 7103;
+  // Explicit env beats the config file; both beat the schema default.
+  const appWindow = env.HAVOC_APP_WINDOW?.trim()
+    ? p.HAVOC_APP_WINDOW
+    : (over.appWindow ?? p.HAVOC_APP_WINDOW);
   return {
     runtimeOrigin,
     captureExe,
@@ -109,9 +124,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     roomId,
     gameWindowTitle: p.HAVOC_GAME_WINDOW_TITLE,
     gatewayPort: p.HAVOC_GATEWAY_PORT,
-    hudPort: p.HAVOC_HUD_PORT,
-    hudOrigin: `http://127.0.0.1:${p.HAVOC_HUD_PORT}`,
+    hudPort,
+    hudOrigin: `http://127.0.0.1:${hudPort}`,
     anchorOverlay: p.HAVOC_ANCHOR_OVERLAY === "1",
+    appWindow,
     skipLogin: p.HAVOC_DESKTOP_SKIP_LOGIN === "1" || p.HAVOC_DEV_SESSION === "1",
     elevateGep: p.HAVOC_ELEVATE_GEP !== "0",
   };
@@ -145,6 +161,7 @@ function tryRead(file: string): Overrides | null {
       bridgeOrigin: str(raw["HAVOC_BRIDGE_ORIGIN"] ?? raw.bridgeOrigin),
       roomId: str(raw["HAVOC_ROOM_ID"] ?? raw.roomId),
       captureExe: str(raw["HAVOC_CAPTURE_EXE"] ?? raw.captureExe),
+      appWindow: windowMode(raw["HAVOC_APP_WINDOW"] ?? raw.appWindow),
     };
   } catch {
     return null;
@@ -153,4 +170,8 @@ function tryRead(file: string): Overrides | null {
 
 function str(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+
+function windowMode(v: unknown): "hidden" | "visible" | "overlay" | undefined {
+  return v === "hidden" || v === "visible" || v === "overlay" ? v : undefined;
 }

@@ -128,7 +128,7 @@ export interface GameSnapshot {
     /** Authoritative observation epoch (ms) — monotonic staleness gate. */
     observedAt?: number;
     /** How the last round ended (winner + reason), cleared at next round start. */
-    roundEnd?: { round?: number | null; winner: "blue" | "red" | null; reason: string | null; winnerSide?: "attacker" | "defender" | null } | null;
+    roundEnd?: { round?: number | null; winner: "blue" | "red" | null; reason: string | null; winnerSide?: "attacker" | "defender" | null; label?: string | null; highlightPlayer?: { name: string; agent: string | null; kills: number | null; deaths: number | null; assists: number | null } | null } | null;
     /** Viewer's side this round (from the snapshot's team startingSide). */
     viewerSide?: "attack" | "defense" | null;
     /** The viewer's START side (session-snapshot ground truth) — drives the side-label fallback. */

@@ -1,6 +1,6 @@
-# havoc-unleash
+# Havoc Unleash
 
-Clean-room replica of the audited HAVOC Desktop architecture, self-contained:
+Havoc Unleash desktop app — self-contained:
 
 ```
 services/game-data-runtime   :7423  /health + /events SSE
@@ -29,6 +29,9 @@ npm run dev            # runtime child is auto-spawned by the desktop app
 #   HAVOC_RUNTIME_PORT=7413      e.g. point at a real capture service
 #   HAVOC_GAME_WINDOW_TITLE="VALORANT"
 #   HAVOC_SMOKE_QUIT_MS=8000     headless CI smoke exit
+#   HAVOC_APP_WINDOW=hidden      boot in the background (shell appears on
+#                                second launch); also "visible" (default) | "overlay"
+#   HAVOC_APP_PORT=7103          alias for HAVOC_HUD_PORT (reference name)
 ```
 
 For OBS: add a browser source -> `http://127.0.0.1:7103/` sized to your canvas.

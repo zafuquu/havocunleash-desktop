@@ -1,5 +1,5 @@
 /**
- * Socket.IO producer — parity with the replica bridge control plane.
+ * Socket.IO producer — bridge control plane.
  *
  *   path:  /api/socket/io
  *   auth:  { ticket }   (from realtime.desktopProducerTicket)
@@ -73,7 +73,11 @@ export class ProducerClient {
       const socket = io(this.bridgeOrigin, {
         path: SOCKET_IO_PATH,
         auth: { ticket },
-        transports: ["websocket"],
+        // Polling handshake first, then upgrade to websocket — the exact
+        // transport flow of the original app and the bridge's own internal
+        // viewer. Works through upgrade-hostile proxies that would kill a
+        // websocket-only client (the bridge serves both on this path).
+        transports: ["polling", "websocket"],
         reconnection: true,
         // Never give up: Socket.IO's default giveup behavior killed the producer
         // and presence heartbeat after a handful of failed reconnects.

@@ -133,11 +133,20 @@ export class ValRoundEngine {
       assists: number | null;
       alive: boolean | null;
       credits: number | null;
+      spike?: boolean | null;
     }>,
   ): void {
     for (const p of players) {
       if (!p.player_id && !p.name) continue;
       const key = p.player_id || p.name;
+      // Spike carrier = the ATTACKING side for this round (absolute truth —
+      // only attackers carry the spike). Round number included so the
+      // settlement can derive the attacker side on PARITY-OPPOSITE rounds
+      // too (sides alternate each round; solo lobbies never observe the
+      // enemy carrying), live 2026-10-18.
+      if (p.spike === true && (p.team === 0 || p.team === 1) && this.roundNumber > 0) {
+        this.settlement.setObservedAttackerStartTeam(p.team, this.roundNumber);
+      }
       const prev = this.players.get(key);
       const next: EnginePlayer = {
         playerId: p.player_id || p.name,

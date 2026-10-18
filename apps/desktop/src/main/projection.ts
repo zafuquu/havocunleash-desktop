@@ -1,5 +1,5 @@
-/**
- * Valorant projection session — normalizes provider facts into HUD relay
+﻿/**
+ * Valorant projection session â€” normalizes provider facts into HUD relay
  * state, with the audited round-number/phase pairing rules (hold a backwards
  * phase until its matching number lands; drop stale end-phases).
  */
@@ -20,17 +20,17 @@ import * as nodePath from "path";
 const PHASE_ORDER: Record<string, number> = { shopping: 0, combat: 1, end: 2 };
 
 /**
- * Phase 2 — boot-cache provenance.
+ * Phase 2 â€” boot-cache provenance.
  *
  * Provider/plugin STATUS frames prove the provider is talking; they are not
  * evidence that a match exists, so they must never satisfy the boot-cache gate
  * (same principle as the A2 rule that plugin_status cannot make telemetry
- * HEALTHY — telemetry health needs real game data, not handshakes).
+ * HEALTHY â€” telemetry health needs real game data, not handshakes).
  */
 const STATUS_FACT_KEYS: ReadonlySet<string> = new Set(["provider_status"]);
 
 /**
- * Phase 2 — session phases that PROVE a real Valorant session. `idle`/`unknown`
+ * Phase 2 â€” session phases that PROVE a real Valorant session. `idle`/`unknown`
  * are deliberately excluded: they are exactly what the runtime publishes when
  * nothing is running, and the first such frame used to be enough to promote a
  * restored previous match into authoritative state.
@@ -38,7 +38,7 @@ const STATUS_FACT_KEYS: ReadonlySet<string> = new Set(["provider_status"]);
 const LIVE_SESSION_PHASES: ReadonlySet<string> = new Set(["loading", "pregame", "live", "ending"]);
 
 /**
- * Relay board contract — `packages/contracts/src/hud-state.ts` caps the relay
+ * Relay board contract â€” `packages/contracts/src/hud-state.ts` caps the relay
  * roster at 10 entries (`.max(10)`) because the site renders a 5v5 board.
  *
  * Live defect fixed here (2026-09-24, hybrid Blob capture engine): the provider
@@ -65,7 +65,7 @@ const RELAY_ROSTER_MAX = 10;
 const RELAY_ROSTER_PER_TEAM = 5;
 
 /**
- * Diagnostics retained from the boot cache. This is NEVER authoritative state —
+ * Diagnostics retained from the boot cache. This is NEVER authoritative state â€”
  * see restoreCache().
  */
 interface BootContinuity {
@@ -84,8 +84,8 @@ interface BootContinuity {
 /**
  * Reads a display name out of every identity dialect the runtimes send.
  *
- * Live 2026-09-29 (fork capture engine): the session viewer identity is nested —
- * `session.viewer.player.name.displayName` (+ `gameName`/`tagLine`) — while the
+ * Live 2026-09-29 (fork capture engine): the session viewer identity is nested â€”
+ * `session.viewer.player.name.displayName` (+ `gameName`/`tagLine`) â€” while the
  * projection read `viewer.player.displayName`, which that engine never sends.
  * The authoritative local-player identity therefore stayed null for a whole match
  * and only the later `is_local` scoreboard row anchored it, i.e. the viewer's own
@@ -121,7 +121,7 @@ function parseFactValue(value: unknown): unknown {
   return value;
 }
 
-/** Pipeline telemetry — enabled with HAVOC_DEBUG_PIPELINE=1 (no secrets). */
+/** Pipeline telemetry â€” enabled with HAVOC_DEBUG_PIPELINE=1 (no secrets). */
 function pipelineLog(event: string, data: Record<string, unknown>): void {
   if (process.env.HAVOC_DEBUG_PIPELINE === "1") {
     console.log("[pipeline:projection]", event, JSON.stringify(data));
@@ -140,7 +140,7 @@ interface WorkingState {
   phaseStartedAt: number | null;
   spikePlantedAt: number | null;
   /**
-   * Spike plant site ("A" | "B" | "C") while planted — mirrors the timestamp's
+   * Spike plant site ("A" | "B" | "C") while planted â€” mirrors the timestamp's
    * lifecycle (set on plant, cleared on defuse/detonation/round reset).
    */
   plantSite: string | null;
@@ -148,7 +148,7 @@ interface WorkingState {
    * ROUND-LOCAL terminal spike outcome (defused/detonated) + the round it
    * belongs to. Needed because the spike event can be followed within
    * milliseconds by the NEXT round's plant (live capture 2026-09-24:
-   * `spike_defused` → +2 ms `planted_location`), so the global `spike` state
+   * `spike_defused` â†’ +2 ms `planted_location`), so the global `spike` state
    * can no longer carry the round's outcome by the time the round settles.
    * The latch never crosses rounds: it is only applied when its round matches
    * the settling round and is cleared at every round/match reset.
@@ -164,13 +164,13 @@ interface WorkingState {
   spike: HudRelayState["spike"];
   killfeed: KillfeedEntry[];
   viewerRole: "player" | "observer" | "coach" | "spectator" | "unknown";
-  /** Epoch ms when the session first went live — drives the round-1 buy grace. */
+  /** Epoch ms when the session first went live â€” drives the round-1 buy grace. */
   liveSince: number | null;
   roster: HudRelayState["roster"];
   // --- Round-settlement classification (ported from upstream val-round-settlement) ---
   gameEvent: string | null;
   /**
-   * PASS 7C — WHO the current `gameEvent` label belongs to.
+   * PASS 7C â€” WHO the current `gameEvent` label belongs to.
    *
    * The label is established by the round the ENGINE named (`round_settled`,
    * which carries the authoritative winner/winType of the round that ended) or
@@ -179,7 +179,7 @@ interface WorkingState {
    * round-win banner stays on screen through the buy phase), so it outlives the
    * settlement it describes.
    *
-   * `roundEnd` — the object consumers actually render — is REPLACED every time
+   * `roundEnd` â€” the object consumers actually render â€” is REPLACED every time
    * any winner source settles a round. Without this ownership record a later
    * settlement would carry the PREVIOUS round's label: live 2026-09-30
    * 05:51:48 the round-9 label survived into rounds 10-16 (each showing the round
@@ -187,7 +187,7 @@ interface WorkingState {
    * ACE was published alongside round 4's blue win.
    *
    * `gameEventRound` = `roundEnd.round` while the two describe the same round,
-   * and null whenever they do not — so a consumer can never pair a winner with
+   * and null whenever they do not â€” so a consumer can never pair a winner with
    * another round's classification.
    */
   gameEventRound: number | null;
@@ -196,7 +196,7 @@ interface WorkingState {
    * Per-round ACE evidence: the DISTINCT victims each killer actually eliminated,
    * recorded only when the victim resolves to a known roster row. An ACE is
    * "the same player eliminated all five opponents", which can only be proven
-   * from identities — never from a kill COUNT (live 2026-09-30: 3 real kills
+   * from identities â€” never from a kill COUNT (live 2026-09-30: 3 real kills
    * were counted as 6 because the engine emits every kill twice, and the old
    * `>= 5` predicate displayed ACE for a round nobody aced).
    */
@@ -204,7 +204,7 @@ interface WorkingState {
   roundDeaths: Set<string>;
   clutchMax: Map<string, number>;
   roundStartScore: { blue: number; red: number } | null;
-  /** Combat phase start (epoch) — base for the derived timeout reason (VS round-clock parity). */
+  /** Combat phase start (epoch) â€” base for the derived timeout reason (VS round-clock parity). */
   combatStartedAt: number | null;
   /**
    * The round whose combat phase the clock above belongs to (0 = none observed).
@@ -225,7 +225,7 @@ interface WorkingState {
    * load: live 2026-09-30 05:41:10 the engine published `round 1/shopping` while
    * the session snapshot still reported `pregame` for ~19 s, so HU presented the
    * agent-select scene (and `isAgentSelectPhase: true`) through the first part of
-   * R1's buy — the "R1 BuyRound has no data / R2 is normal" divergence (R2+ always
+   * R1's buy â€” the "R1 BuyRound has no data / R2 is normal" divergence (R2+ always
    * had a live session by the time its buy started). Once set, a stale
    * pregame/loading frame can no longer pull the session back.
    */
@@ -246,11 +246,11 @@ interface WorkingState {
   scoreSeen: boolean;
   /** Restored-from-cache data not yet confirmed by live runtime frames. */
   restorePending: boolean;
-  /** Epoch ms of the last round settlement — drives the endround hold. */
+  /** Epoch ms of the last round settlement â€” drives the endround hold. */
   roundEndedAt: number | null;
   matchWinner: "blue" | "red" | null;
   /**
-   * PASS 7B — true between a new-match boundary (fresh agent select) and the new
+   * PASS 7B â€” true between a new-match boundary (fresh agent select) and the new
    * match's own live evidence. A trailing frame from the retired match (e.g. a
    * belated `game_end`) must not re-select Post Game because of it.
    */
@@ -260,38 +260,52 @@ interface WorkingState {
     winner: "blue" | "red";
     reason: "elimination" | "detonation" | "defusion" | "time";
     winnerSide?: "attacker" | "defender" | null;
-    /** The settled round's number — the stable Game Event identity. */
+    /** The settled round's number â€” the stable Game Event identity. */
     round?: number | null;
+    /** The settlement's ceremony label for THIS round (mirrors roundHistory[].label). */
+    label?: string | null;
+    /** Clutch/highlight player (agent + KDA) for the ceremony card. */
+    highlightPlayer?: {
+      name: string;
+      agent: string | null;
+      kills: number | null;
+      deaths: number | null;
+      assists: number | null;
+    } | null;
+
   } | null;
-  /** The viewer's START side from the snapshot (defense/attack) — side label ground truth. */
+  /** The viewer's START side from the snapshot (defense/attack) â€” side label ground truth. */
   viewerStartSide: "attack" | "defense" | null;
   /** Epoch of the last authoritative session snapshot (hybrid: blob runtime). */
   sessionPhaseAt: number | null;
-  /** The viewer's side THIS round — GEP `game_info/team` ground truth ("attack"/"defense"). */
+  /** The viewer's side THIS round â€” GEP `game_info/team` ground truth ("attack"/"defense"). */
   viewerSide: "attack" | "defense" | null;
   /**
    * The viewer's side as observed when the CURRENT round started.
    *
    * The ATTACKER/DEFENDER label needs the side of the round being settled. When
    * the session's START side is unknown (a mid-match HU start, or an engine that
-   * never re-sends the session's startingSide — live 2026-09-30 06:49:
+   * never re-sends the session's startingSide â€” live 2026-09-30 06:49:
    * `viewerSide=null/defense` with the start side present only in some sessions)
    * `viewerSideForRound()` had nothing to derive from and the round-win label
    * vanished from the Game Event. The side sampled at the round's own start is
    * that round's side, so it is recorded per round (round-scoped, no carry-over).
    */
   roundViewerSide: "attack" | "defense" | null;
-  /** Last seen GEP round_outcome {won,lost} — viewer-perspective round result. */
+  /** Last seen GEP round_outcome {won,lost} â€” viewer-perspective round result. */
   roundOutcome: { won: number; lost: number } | null;
   /**
    * Highest round number whose settlement was recorded (by ANY source: the
    * runtime's round_settled event, the end-phase settle, the score delta). The
    * score-stream round-progression sync (HU-014) reads this to tell "the round
    * that just scored is already settled" apart from "no round fact ever
-   * described it" — it is monotonic per match and reset by every match wipe.
+   * described it" â€” it is monotonic per match and reset by every match wipe.
    */
   lastSettledRound: number;
   roundHistory: Array<{
+    /** The settlement's ceremony label for THIS round (Thrifty/Ace/Clutch/Flawless...). */
+    label?: string | null;
+
     round: number;
     winner: "blue" | "red";
     reason: "elimination" | "detonation" | "defusion" | "time";
@@ -359,7 +373,7 @@ export class ValProjectionSession {
   /**
    * Signature + epoch of the last kill fact that was APPLIED.
    *
-   * The capture engine emits the SAME kill twice — byte-identical payloads a
+   * The capture engine emits the SAME kill twice â€” byte-identical payloads a
    * couple of milliseconds apart (live capture 2026-09-30 03:26:38.352, and the
    * relay kill feed showed every kill as a pair: seq 2/3, 4/5, 6/7 ... 14/15).
    * Each duplicate used to add a second kill-feed row AND a second round kill,
@@ -371,17 +385,17 @@ export class ValProjectionSession {
    * weapon needs a revive/re-engagement cycle (seconds).
    */
   private lastKillFact: { sig: string; at: number } | null = null;
-  /** Stable per-player creation order — keeps roster positions fixed across publishes. */
+  /** Stable per-player creation order â€” keeps roster positions fixed across publishes. */
   private rosterSeq = new Map<string, number>();
   /**
    * Identities that exist ONLY as scoreboard observations (never listed in a
    * provider squad snapshot). They may fill a free board slot but must never
-   * displace a real squad member — the live provider reported such extra rows
+   * displace a real squad member â€” the live provider reported such extra rows
    * (2026-09-24) and they must not cost a player their slot.
    */
   private observedOnlyRoster = new Set<string>();
   /**
-   * Last GEP team number seen per player — the team-side source of truth.
+   * Last GEP team number seen per player â€” the team-side source of truth.
    */
   private lastGepTeam = new Map<string, number>();
   /**
@@ -389,18 +403,18 @@ export class ValProjectionSession {
    * `teammate` flag, before the local player's own row has been seen.
    *
    * Live 2026-09-30: every GEP scoreboard row carries `teammate` (true when the
-   * row is on the local player's side) and the ENEMY rows are emitted FIRST —
+   * row is on the local player's side) and the ENEMY rows are emitted FIRST â€”
    * `scoreboard_0..2` (teammate:false) at 03:25:51.965, the local squad
    * (`teammate:true`) at .990. Without this the cold start assigned every
    * pre-anchor row to the viewer's side, so the opponent sat on the left with the
-   * viewer's score until the local `is_local` row finally landed — the reported
+   * viewer's score until the local `is_local` row finally landed â€” the reported
    * "team block on one side, score on the other" Agent-Select defect. The flag is
    * pure identity evidence (never array order, never a team LABEL), and the direct
    * `is_local` anchor always outranks it.
    */
   private gepTeamFromTeammate: number | null = null;
   /**
-   * Names the engine itself flagged `is_local: true` — the fallback local-player
+   * Names the engine itself flagged `is_local: true` â€” the fallback local-player
    * identity when the authoritative session snapshot carries no viewer. Identity
    * only: it never creates a roster entry and never guesses by position.
    */
@@ -413,18 +427,18 @@ export class ValProjectionSession {
   private pendingAbilityState: { C: boolean; Q: boolean; E: boolean; X: boolean } | null = null;
 
   private readonly listeners = new Set<(state: HudRelayState) => void>();
-  /** Phase 2: quarantined previous-match mirror — diagnostics only, never `s`. */
+  /** Phase 2: quarantined previous-match mirror â€” diagnostics only, never `s`. */
   private bootContinuity: BootContinuity | null = null;
-  /** Last relay state that satisfied the contract — fallback so build() never throws. */
+  /** Last relay state that satisfied the contract â€” fallback so build() never throws. */
   private lastGoodRelayState: HudRelayState | null = null;
   /** One-shot warning: a provider reporting extra board rows is visible, not silent. */
   private loggedRosterOverflow = false;
 
   constructor() {
     // Phase 2: the previous match's disk mirror is QUARANTINED, never applied.
-    // A cold boot starts unknown → idle and only live provider evidence may
+    // A cold boot starts unknown â†’ idle and only live provider evidence may
     // establish a session. (Applying it made a finished board present itself as
-    // the live game — the HUD showed a stale "0-2 / Ascent" with no VALORANT
+    // the live game â€” the HUD showed a stale "0-2 / Ascent" with no VALORANT
     // running, because any first provider frame cleared the unconfirmed flag.)
     this.restoreCache();
   }
@@ -479,19 +493,19 @@ export class ValProjectionSession {
     const mapKey = snap.mapKey ?? snap.session?.map?.key ?? null;
     // Phase 2: only a REAL session (a live-ish phase, or an actual match
     // identity) satisfies the boot-cache gate. An idle/unknown snapshot is what
-    // the runtime publishes when nothing is running — it must never be able to
+    // the runtime publishes when nothing is running â€” it must never be able to
     // promote quarantined continuity into authoritative state.
     if (matchId !== null || LIVE_SESSION_PHASES.has(sessionPhase)) s.restorePending = false;
 
     s.revision += 1;
     if (sessionPhase !== s.sessionPhase && sessionPhase === "live") s.liveSince = Date.now();
-    // PASS 7B: the new match is actually live — the retired match can no longer
+    // PASS 7B: the new match is actually live â€” the retired match can no longer
     // bring Post Game back through a trailing frame.
     if (sessionPhase === "live") s.newMatchPending = false;
     s.sessionPhase = sessionPhase;
     // Freshness stamp: every authoritative session snapshot refreshes it. In
     // hybrid mode the blob runtime never sends round facts, so s.roundPhase is
-    // FROZEN — the fresh session phase must outrank it in deriveScene.
+    // FROZEN â€” the fresh session phase must outrank it in deriveScene.
     s.sessionPhaseAt = Date.now();
     // The snapshot's viewer identity, applied AFTER the fresh-match reset below:
     // it describes the match this snapshot reports, so the per-match wipe must
@@ -515,7 +529,7 @@ export class ValProjectionSession {
       s.viewerGepTeam = null;
       s.viewerName = null;
       // The new match re-anchors its own local player (snapshot viewer, else the
-      // next is_local scoreboard row) — nothing may be inherited.
+      // next is_local scoreboard row) â€” nothing may be inherited.
       this.localNames.clear();
       this.pendingAbilityState = null;
       s.viewerStartSide = null;
@@ -567,7 +581,7 @@ export class ValProjectionSession {
       infinity: "Abyss", bonsai: "Split", corrode: "Corrode", range: "The Range",
       // Riot internal codenames the engine actually sends:
       jam: "Lotus", duality: "Bind", foxtrot: "Breeze", canyon: "Fracture",
-      pitt: "Pearl", triad: "Haven", port: "Icebox", rook: "Corrode", plummet: "Summit",
+      pitt: "Pearl", triad: "Haven", port: "Icebox", rook: "Corrode", plummet: "Summit", gauntlet: "Gauntlet", adraft: "Gauntlet",
       infinity_: "Abyss", hurm_alley: "District", hurm_bowl: "Kasbah", hurm_helix: "Drift",
       hurm_hightide: "Glitch", hurm_yard: "Piazza", skirmish_a: "Skirmish A", skirmish_b: "Skirmish B",
       skirmish_c: "Skirmish C", skirmish_d: "Skirmish D", skirmish_e: "Skirmish E",
@@ -598,20 +612,20 @@ export class ValProjectionSession {
     const teams = snap.teams ?? snap.session?.teams;
     // SIDE GROUND TRUTH: the upstream snapshot carries each team's starting
     // side (defense/attack). Find the viewer's team by player name and record
-    // their START side — this replaces the inverted parity heuristic for the
+    // their START side â€” this replaces the inverted parity heuristic for the
     // ATTACKER WIN/DEFENDER WIN label (the user's matches start on defense,
     // so the assumption "team_0 attacks rounds 1-12" was inverted 100% of
     // the time for them).
     // Ground-truth start side: match the SNAPSHOT'S OWN viewer identity
     // (the matchId-reset above nulls s.viewerName before this loop on fresh
-    // matches, which left viewerStartSide null forever → side labels missing).
+    // matches, which left viewerStartSide null forever â†’ side labels missing).
     //
     // The SAME identity match decides which squad is presented LEFT (teamIndex
     // 0). The snapshot's team labels are NOT presentation sides: Riot names a
     // custom lobby's squads "Team One"/"Team Two" (and the live game "Blue"/
-    // "Red") in whatever order it likes, so mapping "Blue" → left could put the
+    // "Red") in whatever order it likes, so mapping "Blue" â†’ left could put the
     // OPPONENT on the left while the score (which is anchored to the viewer:
-    // blue = the local player's score) stays on the reader's side — the live
+    // blue = the local player's score) stays on the reader's side â€” the live
     // Agent-Select defect (team block on one side, score on the other, flipping
     // as soon as GEP's team numbers land). Presentation side follows TEAM
     // IDENTITY: the viewer's squad is always left.
@@ -645,7 +659,7 @@ export class ValProjectionSession {
         const isBlue = lower === "blue" || lower === "team one";
         const isRed = lower === "red" || lower === "team two";
         // The viewer's squad is presentation-left whenever the snapshot names
-        // the viewer (identity evidence only — never array order or a label).
+        // the viewer (identity evidence only â€” never array order or a label).
         const fallbackIndex =
           viewerSquadPos === null ? (isBlue ? 0 : isRed ? 1 : undefined) : teamPos === viewerSquadPos ? 0 : 1;
         // HUD color/split logic keys on "Blue"/"Red" strings.
@@ -660,7 +674,7 @@ export class ValProjectionSession {
             p.player.identity?.gameName ??
             p.player.puuid ??
             "?",
-          // Stable identity (the runtime's snapshot playerId / puuid) — panel
+          // Stable identity (the runtime's snapshot playerId / puuid) â€” panel
           // position must never decide which telemetry a row owns.
           puuid: (p.player.playerId ?? p.player.puuid ?? undefined) as string | undefined,
           agentName: agentGate ? null : (p.agent?.name ?? null),
@@ -674,7 +688,7 @@ export class ValProjectionSession {
           kills: p.player.kills ?? undefined,
           deaths: p.player.deaths ?? undefined,
           assists: p.player.assists ?? undefined,
-          weapon: p.player.weapon ?? undefined,
+          weapon: weaponDisplayName(p.player.weapon ?? undefined) ?? undefined,
           credits: p.player.credits ?? undefined,
           spentCredits: p.player.spentCredits ?? undefined,
           health: p.player.health ?? undefined,
@@ -686,12 +700,12 @@ export class ValProjectionSession {
           hasSpike: p.player.hasSpike ?? undefined,
         }));
       });
-      // PASS 7D — the snapshot heartbeat REFRESHES identities; it must NOT erase
+      // PASS 7D â€” the snapshot heartbeat REFRESHES identities; it must NOT erase
       // telemetry that only the GEP scoreboard provides.
       //
       // The previous implementation rebuilt `s.roster` from the snapshot and only
       // carried previous stats over when the snapshot supplied NONE. Whenever the
-      // snapshot carried any stat (its KDA), the carry-over was skipped — so
+      // snapshot carried any stat (its KDA), the carry-over was skipped â€” so
       // agent / weapon / shield / credits, which the GEP scoreboard frames keep
       // current between heartbeats, were WIPED on every heartbeat. Live symptoms:
       // "K/D/A updated but the agent icon, loadout, shield and credits did not"
@@ -700,7 +714,7 @@ export class ValProjectionSession {
       // back to dead, and Sage's row losing its agent key.
       //
       // The merge is by IDENTITY (engine id first, then the normalized display
-      // name) — never by panel position — and it never re-keys or duplicates an
+      // name) â€” never by panel position â€” and it never re-keys or duplicates an
       // established row (Pass 6): a prior row is only ever MATCHED, never moved to
       // another player. The prior row IS the live row (already updated by the GEP
       // facts and the round bookkeeping), so "snapshot value if provided, else the
@@ -716,7 +730,7 @@ export class ValProjectionSession {
       const seenNames = new Set<string>();
       const mergedRoster: NonNullable<HudRelayState["roster"]> = [];
       for (const entry of s.roster) {
-        // Some engine snapshots list the viewer under BOTH squads — keep the
+        // Some engine snapshots list the viewer under BOTH squads â€” keep the
         // first entry per normalized display name.
         const key = this.normalizeName(entry.displayName);
         if (seenNames.has(key)) continue;
@@ -747,7 +761,7 @@ export class ValProjectionSession {
           teamIndex: anchoredTeam.teamIndex ?? entry.teamIndex ?? prior.teamIndex,
           teamId: anchoredTeam.teamId ?? entry.teamId ?? prior.teamId,
           slot: entry.slot ?? prior.slot,
-          // The snapshot leads on the agent — but only while the agent-select
+          // The snapshot leads on the agent â€” but only while the agent-select
           // cache gate is off (a gate-active snapshot deliberately reports none).
           agentName: agentGateNow ? entry.agentName : entry.agentName ?? prior.agentName,
           agentKey: agentGateNow ? entry.agentKey : entry.agentKey ?? prior.agentKey,
@@ -759,8 +773,19 @@ export class ValProjectionSession {
           weapon: entry.weapon ?? prior.weapon,
           credits: entry.credits ?? prior.credits,
           spentCredits: entry.spentCredits ?? prior.spentCredits,
-          shield: entry.shield ?? prior.shield,
-          shieldType: entry.shieldType ?? prior.shieldType,
+          // Shield: the snapshot heartbeat often carries a stale 0 (its own
+          // economy view lags the scoreboard facts) â€” a truthy snapshot value
+          // leads, otherwise the FACT-derived prior survives (the "shield
+          // always blank" flicker). Facts correct both directions: a real
+          // unpurchase reports tier 0 on the next scoreboard frame.
+          shield:
+            entry.shield != null && entry.shield > 0
+              ? entry.shield
+              : (prior.shield ?? entry.shield ?? null),
+          shieldType:
+            entry.shieldType != null && entry.shieldType > 0
+              ? entry.shieldType
+              : (prior.shieldType ?? entry.shieldType ?? null),
           ultPoints: entry.ultPoints ?? prior.ultPoints,
           ultMax: entry.ultMax ?? prior.ultMax,
           hasSpike: entry.hasSpike ?? prior.hasSpike,
@@ -777,11 +802,11 @@ export class ValProjectionSession {
   }
 
   /**
-   * PASS 7B — the authoritative NEW-MATCH boundary (a fresh agent select while a
+   * PASS 7B â€” the authoritative NEW-MATCH boundary (a fresh agent select while a
    * previous match was tracked). Unlike `wipeMatchState()` this also RETIRES the
    * previous match's roster identities: the new match has its own players, and
    * stale identity rows (telemetry wiped, identities kept) filled the relay's
-   * 5-per-side cap and starved the new match's real rows — the reported "new
+   * 5-per-side cap and starved the new match's real rows â€” the reported "new
    * match with incomplete player data". The new roster rehydrates from the
    * session snapshot teams and the new match's own scoreboard facts.
    */
@@ -797,10 +822,10 @@ export class ValProjectionSession {
   }
 
   /**
-   * A5: match-scoped wipe — shared by the fresh-match detection (round 1
+   * A5: match-scoped wipe â€” shared by the fresh-match detection (round 1
    * after a tracked match) and the game_exit retirement. Clears every field
    * the previous match owns; roster identities are KEPT (fresh-match
-   * semantics) — the retirement caller overrides with a full roster clear.
+   * semantics) â€” the retirement caller overrides with a full roster clear.
    */
   private wipeMatchState(): void {
     const s = this.s;
@@ -823,6 +848,12 @@ export class ValProjectionSession {
     s.plantSite = null;
     s.terminalSpike = null;
     s.killfeed = [];
+    // The map is match-scoped: a stale mapKey painted the PREVIOUS match's
+    // map + splash on the next match's agent-select scene (reported live
+    // 2026-10-18). The fresh match's session snapshot re-sets it when the
+    // game reports the real map.
+    s.mapKey = null;
+    s.mapName = null;
     s.roundKills.clear();
     s.roundKillVictims.clear();
     s.roundDeaths.clear();
@@ -852,7 +883,7 @@ export class ValProjectionSession {
       p.shield = null;
       p.shieldType = null;
       p.weapon = null;
-      // Unknown semantics (§14): a wiped round has NO health/alive evidence —
+      // Unknown semantics (Â§14): a wiped round has NO health/alive evidence â€”
       // fabricating HP=100/alive=true was a fake "full HP" board (the HUD
       // treats only an explicit false as dead, so null renders unchanged).
       p.health = null;
@@ -860,19 +891,20 @@ export class ValProjectionSession {
       p.ultPoints = null;
       p.ultMax = null;
       p.hasSpike = null;
-      // Agent evidence is per-match too — stale agentKey/agentIcon from
+      // Agent evidence is per-match too â€” stale agentKey/agentIcon from
       // the previous game made the buy-round cards show wrong/duplicated
       // agent icons until GEP re-reports the roster.
       p.agentKey = undefined;
       p.agentIcon = null;
       p.agentName = null;
-      // Ability charges are per-round too — stale {C,Q,E,X} from the
+      // Ability charges are per-round too â€” stale {C,Q,E,X} from the
       // previous game made every skill icon render as bought/available.
       p.abilityState = undefined;
       p.abilities = undefined;
     }
-    this.diedLastRound.clear();
-    // Ability charges belong to the previous match — including a payload that
+    
+    this.shieldZeroStreak.clear();
+    // Ability charges belong to the previous match â€” including a payload that
     // was still waiting for the local player to be identified.
     this.pendingAbilityState = null;
     this.clearCache();
@@ -894,7 +926,7 @@ export class ValProjectionSession {
    *
    * It matters because the hybrid provider's `me|abilities` fact is LOCAL-player
    * telemetry keyed to this name, and an `is_local` row can arrive without a team
-   * field — the old code only anchored the name inside the team-anchor branch, so
+   * field â€” the old code only anchored the name inside the team-anchor branch, so
    * a viewerless session never identified its own player (live 2026-09-26:
    * `viewerName` stayed null for a whole match and the website got no abilities).
    */
@@ -903,7 +935,7 @@ export class ValProjectionSession {
     if (!this.s.viewerName) this.s.viewerName = name;
   }
 
-  /** The local player's roster entry — undefined until identity is anchored. */
+  /** The local player's roster entry â€” undefined until identity is anchored. */
   private localRosterEntry(): NonNullable<HudRelayState["roster"]>[number] | undefined {
     const s = this.s;
     const viewer = s.viewerName;
@@ -934,7 +966,7 @@ export class ValProjectionSession {
     local.abilityState = state;
     // The same telemetry in the relay's `abilities` slot: the ability slots the
     // engine CURRENTLY reports as available for the LOCAL player. Strictly local
-    // — the provider has no per-opponent ability telemetry, so every other row
+    // â€” the provider has no per-opponent ability telemetry, so every other row
     // keeps `abilities` undefined (= unknown), never "unbought".
     local.abilities = (["C", "Q", "E", "X"] as const).filter((slot) => state[slot]);
   }
@@ -951,7 +983,7 @@ export class ValProjectionSession {
     const s = this.s;
     // Phase 2: the boot-cache gate is satisfied only by real game telemetry.
     // `provider_status` frames (plugin/telemetry state, recovery, game-exit)
-    // report the PROVIDER, not the match — they leave the gate closed.
+    // report the PROVIDER, not the match â€” they leave the gate closed.
     if (!STATUS_FACT_KEYS.has(key)) s.restorePending = false;
     const value = parseFactValue(rawValue);
     // The engine emits prefixed scoreboard variants (scoreboard_ally,
@@ -961,10 +993,10 @@ export class ValProjectionSession {
       case "provider_status": {
         // A5: the runtime retired the local session (real GEP game-exit, or
         // the session-layer `disconnected` mapped onto game_exit). Wipe ALL
-        // match-scoped state — including identity/map/roster — so the retired
+        // match-scoped state â€” including identity/map/roster â€” so the retired
         // session's score/map/rounds cannot survive as "current" payload
         // until the next live session repopulates them. The HUD leaves the
-        // live scene via deriveScene (idle → null).
+        // live scene via deriveScene (idle â†’ null).
         const rec = value as { key?: unknown } | null;
         if (rec?.key !== "game_exit") break;
         this.wipeMatchState();
@@ -998,24 +1030,27 @@ export class ValProjectionSession {
             // won r1 -> {team_0:0, team_1:1}; lost r2 -> {1,1}; won r3 -> {1,2}
             // with round_outcome {won,lost} as the viewer's cumulative W/L):
             // team_1 = LOCAL PLAYER'S score, team_0 = enemy. The roster is
-            // anchored with the viewer on blue/left, so blue = team_1 ALWAYS.
-            // (The previous anchor remap AND a direct blue=t0 both flipped —
-            // randomly, per emission form.)
-            s.blue = t1;
-            s.red = t0;
+            // anchored with the viewer on blue/left, so blue = the VIEWER'S
+            // team score. Anchor by the LOCAL GEP team number (is_local row)
+            // so a viewer on start team 0 keeps team_0 on blue/left too â€”
+            // the default stays team_1 (the historically verified case) until
+            // that anchor lands.
+            const blueIsTeam0 = (s.viewerGepTeam ?? 1) === 0;
+            s.blue = blueIsTeam0 ? t0 : t1;
+            s.red = blueIsTeam0 ? t1 : t0;
           } else return;
         } else if (rec?.won !== undefined || rec?.lost !== undefined) {
           viewerScore = Number(rec?.won);
           enemyScore = Number(rec?.lost);
           if (!Number.isFinite(viewerScore) || !Number.isFinite(enemyScore)) return;
           // {won,lost} is the VIEWER's cumulative round record and the engine
-          // anchors the viewer to blue/left — no team-index lookup needed.
+          // anchors the viewer to blue/left â€” no team-index lookup needed.
           // (The old viewerTeamIndex() call could return the GEP-absolute
           // team number and misattribute the score.)
           s.blue = viewerScore;
           s.red = enemyScore;
         } else return;
-        // Match won: first to 13 WITH a 2-round lead — the bare >=13 check
+        // Match won: first to 13 WITH a 2-round lead â€” the bare >=13 check
         // fired post-game mid-OVERTIME (13-12 is not a finished match).
         if (s.blue >= 13 && s.blue - s.red >= 2) s.matchWinner = "blue";
         else if (s.red >= 13 && s.red - s.blue >= 2) s.matchWinner = "red";
@@ -1028,7 +1063,7 @@ export class ValProjectionSession {
         // `round 0/unknown` published the whole time), so the HUD kept the buy
         // scene during both rounds, never produced a roundEnd and left the
         // round strip cells empty. The score is the authority that survives.
-        // HU-015: a DECREASE means a new match took over the score panel — the
+        // HU-015: a DECREASE means a new match took over the score panel â€” the
         // boundary is taken first (match-scoped stats/round state wiped) and the
         // new match's first score never describes a transition of the old one.
         if (!this.scoreStartsNewMatch(prevBlue, prevRed)) this.syncRoundProgression(prevBlue, prevRed);
@@ -1037,8 +1072,8 @@ export class ValProjectionSession {
       case "round_outcome": {
         // GEP's AUTHORITATIVE round result: {won, lost} is the VIEWER's
         // cumulative round record (verified against the provider log:
-        // match_score {team_0:0,team_1:1} ↔ round_outcome {won:1}). An
-        // increment is the ground-truth winner — no score-delta or
+        // match_score {team_0:0,team_1:1} â†” round_outcome {won:1}). An
+        // increment is the ground-truth winner â€” no score-delta or
         // alive-count guessing. The viewer is ALWAYS blue (engine anchors
         // the roster viewer-left), so the result maps straight through.
         const rec = value as { won?: unknown; lost?: unknown };
@@ -1053,10 +1088,10 @@ export class ValProjectionSession {
         break;
       }
       case "viewer_side": {
-        // GEP `match_info.info.team` (adapter: gep-capture.ts → `viewer_side`):
+        // GEP `match_info.info.team` (adapter: gep-capture.ts â†’ `viewer_side`):
         // the VIEWER's current side. The GEP provider maintains this fact and
         // flips it at halftime/overtime, so it is the authoritative side source
-        // — never derived from team index, roster order or round parity.
+        // â€” never derived from team index, roster order or round parity.
         // First observation seeds the start side (drives the ATTACKER/DEFENDER
         // labels + the parity fallback for rounds the provider has not
         // refreshed); every observation refreshes the current side.
@@ -1069,7 +1104,7 @@ export class ValProjectionSession {
       }
       case "match_start":
       case "match_id": {
-        // Pass 2A — the runtime's AUTHORITATIVE match boundary.
+        // Pass 2A â€” the runtime's AUTHORITATIVE match boundary.
         //   `match_start`  the capture engine's identity layer emits it when a
         //                  new match begins (agent-select flip after a live
         //                  session, or a score that went DOWN vs the previous
@@ -1077,7 +1112,7 @@ export class ValProjectionSession {
         //                  (score/roster/rounds) on it.
         //   `match_id`     emitted whenever the authoritative match id changes.
         // The projection dropped BOTH, so the previous match's K/D/A and round
-        // state stayed on the board until some unrelated reset fired — the
+        // state stayed on the board until some unrelated reset fired â€” the
         // reported "MATCH A K/D/A shows up in MATCH B". Only MATCH-SCOPED state
         // is wiped (wipeMatchState): roster identities, viewer identity and the
         // room/connection configuration survive untouched.
@@ -1086,7 +1121,18 @@ export class ValProjectionSession {
           if (id === null || id === s.matchId) break;
           s.matchId = id;
         }
-        this.wipeMatchState();
+        // Fresh agent-select: the scene/snapshot path has already retired the
+        // previous match (or nothing match-scoped exists to clear). Wiping here
+        // lands seconds after the pick and NULLS the newly picked agents â€”
+        // the live 2026-10-18 "picked agent appears, then vanishes" defect.
+        const freshPregame =
+          s.sessionPhase === "pregame" &&
+          s.roundHistory.length === 0 &&
+          s.matchWinner === null &&
+          s.roundNumber === 0 &&
+          s.blue === 0 &&
+          s.red === 0;
+        if (!freshPregame) this.wipeMatchState();
         break;
       }
       case "round_number": {
@@ -1096,7 +1142,7 @@ export class ValProjectionSession {
         // games, so the match_id-change wipe never fired and the previous
         // game's score/KD/round history bled into the next one. Round 1
         // arriving while a previous match was already tracked means a new
-        // game started — clear its state now (roster identities + team
+        // game started â€” clear its state now (roster identities + team
         // anchoring are kept; stats repopulate from the next scoreboard).
         if (
           n === 1 &&
@@ -1111,7 +1157,7 @@ export class ValProjectionSession {
       case "round_settled": {
         // GROUND TRUTH from the runtime's ValRoundEngine (round_settled event):
         // the winner's GEP start team + the winning SIDE (attacker/defender).
-        // This replaces every heuristic — score deltas, alive counts, parity.
+        // This replaces every heuristic â€” score deltas, alive counts, parity.
         const rec = value as {
           roundNumber?: unknown;
           winnerStartTeam?: unknown;
@@ -1119,6 +1165,7 @@ export class ValProjectionSession {
           winningReason?: unknown;
           winType?: unknown;
           winTypeLabel?: unknown;
+          highlightPlayer?: unknown;
         };
         const winnerStart = Number(rec?.winnerStartTeam);
         const rn = Number(rec?.roundNumber);
@@ -1129,9 +1176,9 @@ export class ValProjectionSession {
           : reasonRaw.includes("eliminat") ? "elimination"
           : reasonRaw.includes("time") ? "time"
           : "elimination";
-        // Winner → blue iff its start team matches the viewer's GEP team
+        // Winner â†’ blue iff its start team matches the viewer's GEP team
         // (fallback: GEP team 1 = the viewer, proven by the provider log's
-        // match_score↔round_outcome correlation).
+        // match_scoreâ†”round_outcome correlation).
         const winner: "blue" | "red" | null =
           !Number.isFinite(winnerStart) ? null
           : winnerStart === (s.viewerGepTeam ?? 1) ? "blue" : "red";
@@ -1142,7 +1189,7 @@ export class ValProjectionSession {
           : null;
         if (winner) {
           this.recordRoundWinner(winner, reason, winnerSide, Number.isFinite(rn) && rn > 0 ? rn : undefined);
-          // Special ceremony labels only from the engine's winType — never
+          // Special ceremony labels only from the engine's winType â€” never
           // invent one (winType: Eliminated/Defuse/Detonate/... from ValRoundEngine).
           const wt = String(rec?.winType ?? "").toLowerCase();
           const label =
@@ -1153,14 +1200,14 @@ export class ValProjectionSession {
             : wt.includes("thrifty") ? "Thrifty"
             : null;
           if (label) {
-            // PASS 7C — attribution guard. The engine reports the round it
+            // PASS 7C â€” attribution guard. The engine reports the round it
             // settled together with the label, so a label for a round that is
             // NOT the settlement on the board is a LATE duplicate of an earlier
             // round: publishing it would pair this round's winner with another
             // round's classification (live 2026-09-30 03:28:13: round 4's blue
             // win published with the enemy's round-3 ACE). `recordRoundWinner`
             // above has already replaced the board for a genuine settlement, so
-            // a mismatch here can only be that stale duplicate — the label is
+            // a mismatch here can only be that stale duplicate â€” the label is
             // ignored, never reassigned to the live round.
             const labelRound = Number.isFinite(rn) && rn > 0 ? rn : null;
             const staleForAnotherRound =
@@ -1170,10 +1217,40 @@ export class ValProjectionSession {
               s.roundEnd.round !== labelRound;
             if (!staleForAnotherRound) {
               s.gameEvent = label;
-              // The label belongs to the settlement on the board — never to the
+              // The label belongs to the settlement on the board â€” never to the
               // round in progress. When the engine named its round and the board
               // has no identity yet, the engine's own number is the authority.
               s.gameEventRound = s.roundEnd?.round ?? labelRound;
+              // Per-round ceremony stamp: `gameEvent` only ever names the LATEST
+              // ceremony, so the site's round-history strip could never show
+              // thrifty/ace/clutch/flawless icons per round (the reported
+              // "round reason icons wrong most of the time"). Stamp the round's
+              // OWN history entry + roundEnd with the label.
+              const targetRound = s.gameEventRound;
+              if (targetRound != null) {
+                const hist = s.roundHistory.find((h) => h.round === targetRound);
+                if (hist) hist.label = label;
+                if (s.roundEnd !== null && s.roundEnd.round === targetRound) s.roundEnd.label = label;
+              }
+              // Clutch-card identity (original-desktop parity): WHO clutched —
+              // name/agent/KDA from the runtime's round_settled payload — stored
+              // on the board's roundEnd so the site can render the agent image
+              // + K/D/A instead of the plain attacker/defender line on a 1vX.
+              const hpRaw = rec.highlightPlayer as {
+                name?: unknown; agent?: unknown; kills?: unknown; deaths?: unknown; assists?: unknown;
+              } | null | undefined;
+              if (
+                hpRaw != null && typeof hpRaw.name === "string" && hpRaw.name.length > 0 &&
+                s.roundEnd !== null && labelRound !== null && s.roundEnd.round === labelRound
+              ) {
+                s.roundEnd.highlightPlayer = {
+                  name: hpRaw.name,
+                  agent: typeof hpRaw.agent === "string" && hpRaw.agent.length > 0 ? hpRaw.agent : null,
+                  kills: typeof hpRaw.kills === "number" ? hpRaw.kills : null,
+                  deaths: typeof hpRaw.deaths === "number" ? hpRaw.deaths : null,
+                  assists: typeof hpRaw.assists === "number" ? hpRaw.assists : null,
+                };
+              }
             }
           }
         }
@@ -1184,7 +1261,7 @@ export class ValProjectionSession {
       case "round_phase": {
         if (typeof value !== "string") return;
         // GEP signals the END OF THE MATCH with phase "game_end" (VS parity).
-        // It must never enter the round-phase state machine — settle the
+        // It must never enter the round-phase state machine â€” settle the
         // match, flip to post-game and stop.
         if (value === "game_end") {
           s.sessionPhase = "ending";
@@ -1196,7 +1273,7 @@ export class ValProjectionSession {
           this.emitChange();
           return;
         }
-        // PASS 7B: a real round phase is live evidence from the NEW match — the
+        // PASS 7B: a real round phase is live evidence from the NEW match â€” the
         // retired match's frames can no longer resurrect Post Game.
         s.newMatchPending = false;
         if (!(value in PHASE_ORDER)) return;
@@ -1249,7 +1326,7 @@ export class ValProjectionSession {
         if (victim) {
           if (this.isDuplicateKillFact("", victim, "death")) break;
           // Exact normalized match FIRST; containment fuzzy matching only
-          // when it is UNIQUE — ambiguous partial names killed the wrong
+          // when it is UNIQUE â€” ambiguous partial names killed the wrong
           // player, which corrupted alive counts and then the winner
           // fallback ("sometimes correct, sometimes wrong").
           for (const p of this.resolveRosterRows(victim)) {
@@ -1277,12 +1354,12 @@ export class ValProjectionSession {
         this.latchTerminalSpike("detonated");
         break;
       // GEP-raw spike event names (verified from the provider log: newEvent
-      // frames named planted_location/defused/detonated — the spike_*-prefixed
+      // frames named planted_location/defused/detonated â€” the spike_*-prefixed
       // keys above never appear in the raw stream).
       case "planted_location":
       case "planted": {
         // GEP delivers the plant SITE together with the plant event
-        // ({"feature":"match_info","key":"planted_location","value":"B"} —
+        // ({"feature":"match_info","key":"planted_location","value":"B"} â€”
         // verified live against the running runtime). Publish the raw site
         // letter only; the "SITE X" presentation lives in the website.
         if (key === "planted_location") {
@@ -1307,7 +1384,7 @@ export class ValProjectionSession {
         break;
       case "match_end": {
         // Upstream engine emits match_end when the match settles. Resolve the
-        // winner from the score if the end-phase classification has not yet —
+        // winner from the score if the end-phase classification has not yet â€”
         // custom games end below 13 rounds, so the leader wins on evidence.
         if (s.matchWinner === null && (s.blue >= 13 || s.red >= 13)) {
           s.matchWinner = s.blue >= s.red ? "blue" : "red";
@@ -1327,7 +1404,7 @@ export class ValProjectionSession {
           sc === "agent-select" || sc === "character-select" || sc === "lobby" || sc === "pregame" ||
           // GEP-raw scene names (verified from the provider log): the agent
           // select scene is "CharacterSelectPersistentLevel". Reading CURRENT
-          // state — HU starting mid-agent-select must enter Agent Select.
+          // state â€” HU starting mid-agent-select must enter Agent Select.
           sc.startsWith("characterselect")
         ) {
           if (s.sessionPhase !== "pregame") {
@@ -1340,18 +1417,24 @@ export class ValProjectionSession {
               s.matchWinner !== null || s.roundHistory.length > 0 || s.publishedNumber > 1 || s.roundNumber > 0;
             const matchInPlay =
               s.matchWinner === null && (s.roundPhase === "combat" || s.roundPhase === "shopping");
-            if (trackedMatch && !matchInPlay) {
-              this.retireMatchForNewGame();
-            }
             // The phase timestamp must describe the phase that is current now:
             // deriveScene's freshness guard reads it, and a stamp left over from
             // the previous phase made fresh agent-select evidence look stale.
             s.sessionPhaseAt = Date.now();
-            this.agentGateUntil = Date.now() + 3000;
-            for (const p of s.roster ?? []) {
-              p.agentKey = undefined;
-              p.agentIcon = null;
-              p.agentName = null;
+            if (trackedMatch && !matchInPlay) {
+              this.retireMatchForNewGame();
+              // Agent-select cache gate: suppress the RETIRED match's stale
+              // agent evidence ONLY on a real new-match boundary. The gate and
+              // the roster blank used to run on EVERY CharacterSelect scene
+              // fact (GEP re-emits it while the pick is on screen, and the
+              // session snapshot's "loading" phase keeps the outer guard true)
+              // â€” the live 2026-10-18 "picked agent appears, then vanishes".
+              this.agentGateUntil = Date.now() + 3000;
+              for (const p of s.roster ?? []) {
+                p.agentKey = undefined;
+                p.agentIcon = null;
+                p.agentName = null;
+              }
             }
           }
           s.sessionPhase = "pregame";
@@ -1367,13 +1450,65 @@ export class ValProjectionSession {
         }
         break;
       }
+      case "player_name": {
+        // The `me` feature's own display name â€” the local player BY DEFINITION
+        // (identity, never a guess). Anchors the viewer when the session
+        // snapshot carries no viewer and before any scoreboard row lands;
+        // abilities/health telemetry keys off this identity (writeAbilityState /
+        // localRosterEntry) â€” live 2026-10-18 this stayed null all match, so
+        // every `abilities` payload was parked in pending forever (grey icons).
+        if (typeof value !== "string" || value.trim().length === 0) break;
+        if (!s.viewerName) {
+          this.anchorLocalName(value.trim());
+          this.applyPendingAbilities();
+        }
+        break;
+      }
+      case "local_health": {
+        // GEP `me` health (adapter: gep-capture maps `health` -> local_health):
+        // the ONLY live HP stream for the local player in this dialect
+        // (scoreboard rows carry alive but not hp). Positive hp is definitive
+        // revive evidence; explicit 0 mid-combat is death.
+        const hp = Number(value);
+        if (!Number.isFinite(hp)) break;
+        const local = this.localRosterEntry();
+        if (!local) break;
+        local.health = hp;
+        if (hp > 0) local.isAlive = true;
+        else if (s.roundPhase !== "shopping") {
+          local.isAlive = false;
+          this.diedLastRound.add(this.normalizeName(local.displayName));
+        }
+        break;
+      }
+      case "roster": {
+        // match_info roster rows carry the LOCKED agent pick (character +
+        // player_id, formatRoster output). UPDATE-ONLY: rows are created by the
+        // snapshot teams â€” without this the picked agent was lost whenever a
+        // match boundary cleared it (agent-select "agent vanishes after pick").
+        const rec = value as Record<string, unknown>;
+        const character = typeof rec?.character === "string" ? rec.character : "";
+        if (!character || Date.now() < this.agentGateUntil) break;
+        const pid = typeof rec?.player_id === "string" && rec.player_id.length > 0 ? rec.player_id : null;
+        const rname = typeof rec?.name === "string" && rec.name.length > 0 ? rec.name : null;
+        const row = (s.roster ?? []).find(
+          (r) =>
+            (pid != null && r.puuid === pid) ||
+            (rname != null && this.normalizeName(r.displayName) === this.normalizeName(rname)),
+        );
+        if (!row) break;
+        row.agentName = agentDisplayName(character) ?? row.agentName;
+        row.agentKey = character.toLowerCase().replace(/_pc(_c)?$/i, "");
+        row.agentIcon = agentIconUrl(character) ?? row.agentIcon;
+        break;
+      }
       case "scoreboard": {
         // Per-player detail observation (weapon/credits/ults/shield/scoreline)
         // from the provider; merged into the matching roster entry by name.
         const rec = value as Record<string, unknown>;
         const name = typeof rec?.name === "string" ? rec.name : null;
         if (!name) return;
-        // PASS 6 (kept): the row is matched by DISPLAY NAME within the match — a
+        // PASS 6 (kept): the row is matched by DISPLAY NAME within the match â€” a
         // frame that disagrees about the engine id must never re-key an established
         // row or grow a phantom identity (the provider flaps spellings/ids).
         // PASS 7B cross-match isolation is provided by the new-match retirement
@@ -1396,7 +1531,7 @@ export class ValProjectionSession {
             : typeof rec.startTeam === "number"
               ? rec.startTeam
               : null;
-        // Anchor the viewer's GEP team from their scoreboard row — is_local
+        // Anchor the viewer's GEP team from their scoreboard row â€” is_local
         // when the provider sends it, otherwise the snapshot's viewer name.
         // (Without this, a cold start piles every player onto one team.)
         const normName = this.normalizeName(name);
@@ -1435,7 +1570,7 @@ export class ValProjectionSession {
             // The viewer's own GEP team number changed mid-match (halftime
             // side flip or squad re-index). Hysteresis: only commit the
             // re-anchor once the new team has been reported consistently for
-            // 1.5s — alternating team facts used to re-side the whole board
+            // 1.5s â€” alternating team facts used to re-side the whole board
             // on every cycle ("score switches to the other team and back").
             if (this.pendingAnchorTeam === gepTeam && Date.now() - this.pendingAnchorSince > 1500) {
               this.pendingAnchorTeam = null;
@@ -1470,7 +1605,7 @@ export class ValProjectionSession {
                   : viewerIdx;
           entry = {
             displayName: name,
-            // The engine's own stable player id (GEP `player_id` / PUUID) — the
+            // The engine's own stable player id (GEP `player_id` / PUUID) â€” the
             // identity the relay keys rows on and the snapshot publishes so a
             // consumer can bind telemetry by identity instead of panel index.
             puuid: str(rec.player_id) ?? str(rec.playerId) ?? str(rec.puuid),
@@ -1526,7 +1661,7 @@ export class ValProjectionSession {
           // Observation-only: this identity is NOT part of any squad snapshot.
           this.observedOnlyRoster.add(posKey);
           // The identity anchor above can be what finally makes the local player
-          // resolvable — replay any ability payload that arrived first.
+          // resolvable â€” replay any ability payload that arrived first.
           this.applyPendingAbilities();
           break;
         }
@@ -1539,7 +1674,7 @@ export class ValProjectionSession {
         // Team side from the player's own last GEP team vs the viewer's
         // anchored team (the direct `is_local` anchor, else the viewer-relative
         // `teammate` evidence). Recompute is idempotent (GEP team ids are stable
-        // per match), so rows never oscillate — and a pre-anchor cold start
+        // per match), so rows never oscillate â€” and a pre-anchor cold start
         // self-heals on the next scoreboard cycle.
         const sideAnchor = s.viewerGepTeam ?? this.gepTeamFromTeammate;
         if (sideAnchor !== null) {
@@ -1556,7 +1691,7 @@ export class ValProjectionSession {
         }
         // GEP internal codenames -> human display + icon. The VS-family engine
         // dialect names the agent `agentInternal` ("Clay_PC_C") instead of
-        // `character` ("Clay") — accept both.
+        // `character` ("Clay") â€” accept both.
         const agentInternal = str(rec.character) ?? str(rec.agentInternal) ?? null;
         if (Date.now() >= this.agentGateUntil) {
           entry.agentName = agentDisplayName(agentInternal) ?? entry.agentName ?? null;
@@ -1570,7 +1705,7 @@ export class ValProjectionSession {
         const wNew =
           weaponDisplayName(rec.weapon ?? rec.weaponName ?? rec.scoreboardWeaponInternal) ?? null;
         // Knife equipped while a primary is still owned: keep the gun visible
-        // (ValoSpectra highestWeapon semantics — GEP reports the HELD weapon).
+        // (ValoSpectra highestWeapon semantics â€” GEP reports the HELD weapon).
         entry.weapon =
           wNew && !/knife|melee/i.test(wNew)
             ? wNew
@@ -1589,7 +1724,7 @@ export class ValProjectionSession {
           entry.spentCredits = Math.max(0, creditBase - entry.credits);
         }
         // Shield: GEP's armor field is the TIER enum (0 none / 1 light / 2
-        // heavy / 3 enemy-unknown / 4 regen) — the VS-family dialect sends it
+        // heavy / 3 enemy-unknown / 4 regen) â€” the VS-family dialect sends it
         // as initialArmor, the fork engine as shield+shieldType. Treating a
         // raw tier as POINTS made every shield render light (tiers are 0-4).
         const shieldPointsFromTier = (v: number | undefined): number | undefined => {
@@ -1602,7 +1737,7 @@ export class ValProjectionSession {
           const n = num(v);
           return n !== undefined && Number.isInteger(n) && n >= 0 && n <= 4 ? n : undefined;
         };
-        const shieldTier =
+        const shieldTierReported =
           tierFrom(rec.shieldType) ??
           tierFrom(rec.armor) ??
           tierFrom(rec.initialArmor) ??
@@ -1611,9 +1746,42 @@ export class ValProjectionSession {
           // REGEN (4) survives even when the fact arrives after the entry was
           // created (live 2026-09-26: a regen shield rendered as Light because
           // the tier was dropped and re-derived from 25 points).
-          tierFrom(rec.shield) ??
-          (entry.shieldType ?? undefined);
-        const shieldPts =
+          tierFrom(rec.shield);
+        // Shield TIER is a BUY-STATE: it changes in the shop, never
+        // mid-combat (damage removes POINTS, not the tier). GEP heartbeats
+        // reported tier 0 mid-round while the shield was still held in-game
+        // (live 2026-10-18 self-damage test) â€” the overlay shield icon
+        // vanished. A zero outside the shopping phase cannot clear a known
+        // non-zero tier; a real unpurchase only becomes observable in the
+        // shop phase.
+                // Shield break PENDING-ZERO: GEP's tier-0 report is noisy (a single
+        // spurious zero on the self-damage race) but a REAL break persists.
+        // Hold through ONE zero; accept it on a repeat report or when the
+        // pending zero is still the latest state 4 s later - fixing both
+        // reported directions ("icon vanishes on self damage" and "icon
+        // doesn't disappear after the shield is broken").
+        let shieldTier = shieldTierReported ?? (entry.shieldType ?? undefined);
+        const shieldKey = this.normalizeName(entry.displayName);
+        if (
+          shieldTierReported === 0 &&
+          s.roundPhase !== "shopping" &&
+          (entry.shieldType ?? 0) > 0
+        ) {
+          const pending = this.shieldZeroStreak.get(shieldKey);
+          const nowMs = Date.now();
+          if (!pending) {
+            this.shieldZeroStreak.set(shieldKey, { n: 1, firstAt: nowMs });
+            shieldTier = entry.shieldType ?? undefined; // hold through the first zero
+          } else {
+            const n = pending.n + 1;
+            this.shieldZeroStreak.set(shieldKey, { n, firstAt: pending.firstAt });
+            // Repeated zero OR a zero that was never contradicted within 4 s
+            // = the shield is really gone.
+            shieldTier = n >= 2 || nowMs - pending.firstAt >= 4000 ? 0 : entry.shieldType ?? undefined;
+          }
+        } else {
+          this.shieldZeroStreak.delete(shieldKey); // any non-zero report (or the shop) resets
+        }        const shieldPts =
           shieldPointsFromTier(num(rec.shield)) ??
           shieldPointsFromTier(shieldTier) ??
           shieldPointsFromTier(num(rec.armor)) ??
@@ -1640,7 +1808,7 @@ export class ValProjectionSession {
             } else if (entry.health === 0) {
               // PASS 7B revive (dead -> alive): alive evidence with no fresh health
               // reading. The death's hp=0 must not survive the revive, and a
-              // fabricated 100 would be fake telemetry — the value becomes
+              // fabricated 100 would be fake telemetry â€” the value becomes
               // "unknown" until the provider reports real health again.
               entry.health = null;
             }
@@ -1672,14 +1840,14 @@ export class ValProjectionSession {
       case "abilities": {
         // GEP emits the LOCAL player's ability charges. Values arrive as 0/1
         // NUMBERS (provider log: {C:0,Q:0,E:1,X:0}), real booleans, or "0"/"1"
-        // strings depending on the dialect — normalize all of them safely.
+        // strings depending on the dialect â€” normalize all of them safely.
         const asBool = (v: unknown): boolean =>
           v === true || v === 1 || v === "1" || v === "true";
         const rec = value as Record<string, unknown>;
         // Keyed to the local player, with the retained-payload path inside:
         // `viewerName` is normally already anchored, but the round-start frame
         // may legitimately arrive BEFORE the scoreboard row that identifies the
-        // local player — it must still be applied, not discarded.
+        // local player â€” it must still be applied, not discarded.
         this.writeAbilityState({
           C: asBool(rec?.C),
           Q: asBool(rec?.Q),
@@ -1699,7 +1867,7 @@ export class ValProjectionSession {
    * Authoritative score-snapshot input (runtime `valorant_score_snapshot`).
    *
    * The frame carries the match id, which makes it the most reliable new-match
-   * boundary HU receives (the score stream is published at every match start —
+   * boundary HU receives (the score stream is published at every match start â€”
    * live 2026-09-29: 03:52:26 `ally 0 / enemy 0` for the fresh match right after
    * the previous match retired) and the score itself is the round-progression
    * authority for dialects that stream no round facts at all (HU-014).
@@ -1735,11 +1903,11 @@ export class ValProjectionSession {
   /* --------------------- score-stream round progression --------------------- */
 
   /**
-   * HU-015 — a score DECREASE is a new match taking over the score panel.
+   * HU-015 â€” a score DECREASE is a new match taking over the score panel.
    *
    * A match score never decreases inside a match, so a lower score than the one
    * already published can only be the next game (live 2026-09-25: 13-8 at
-   * 02:47:11Z, 0-0 at 02:48:08Z for the next match) — the same rule the capture
+   * 02:47:11Z, 0-0 at 02:48:08Z for the next match) â€” the same rule the capture
    * engine's own identity layer uses to emit `match_start`.
    *
    * Deliberately NOT applied once the session says `ending`: a post-game frame
@@ -1752,10 +1920,10 @@ export class ValProjectionSession {
   }
 
   /**
-   * HU-014 — round progression from the score stream.
+   * HU-014 â€” round progression from the score stream.
    *
    * The fork dialect publishes NO round facts for the first rounds of a match
-   * (live 2026-09-25 02:07:18 shopping → 02:08:30 `1-0` → 02:09:01 `2-0`, all
+   * (live 2026-09-25 02:07:18 shopping â†’ 02:08:30 `1-0` â†’ 02:09:01 `2-0`, all
    * with `round 0/unknown`; the engine's first round fact was `3/shopping` at
    * 02:09:14), so nothing advanced the round: the HUD stayed on the BuyRound
    * scene through both rounds, no roundEnd/roundHistory was ever produced and
@@ -1764,10 +1932,10 @@ export class ValProjectionSession {
    * The score is the authority that survives, and it is exact:
    *   - every point == exactly one completed round (points are never deducted),
    *     so `blue + red` IS the number of the round that just ended;
-   *   - the round in progress is therefore `blue + red + 1` — validated against
+   *   - the round in progress is therefore `blue + red + 1` â€” validated against
    *     the engine's own facts, whose round numbers for R3..R21 were exactly
-   *     that (02:09:14 `2-0` → `3/shopping`, 02:43:12 `12-7` → `20/shopping`,
-   *     02:45:28 `12-8` → `21/shopping`).
+   *     that (02:09:14 `2-0` â†’ `3/shopping`, 02:43:12 `12-7` â†’ `20/shopping`,
+   *     02:45:28 `12-8` â†’ `21/shopping`).
    *
    * Nothing is fabricated: this only derives the round LIFECYCLE the engine
    * failed to describe (boundary + number). Every per-player value stays
@@ -1832,7 +2000,7 @@ export class ValProjectionSession {
     const s = this.s;
     // Half / overtime boundary: VALORANT resets the economy (round 13 = new
     // half, round 25 = OT start). Stale previous-half credits/spent/weapon/
-    // shield must never display — null until fresh GEP money arrives (no
+    // shield must never display â€” null until fresh GEP money arrives (no
     // invented values). The computed-loadout base is cleared with them.
     if (s.roundNumber === 13 || s.roundNumber === 25) {
       for (const p of s.roster ?? []) {
@@ -1857,7 +2025,8 @@ export class ValProjectionSession {
         p.shieldType = 0;
       }
     }
-    this.diedLastRound.clear();
+    
+    this.shieldZeroStreak.clear();
     for (const p of s.roster ?? []) {
       p.isAlive = true;
       p.health = 100;
@@ -1885,7 +2054,7 @@ export class ValProjectionSession {
     s.combatStartedAt = null;
     s.combatStartedRound = 0;
     // The side THIS round is played on (the ATTACKER/DEFENDER label ground truth
-    // for the round about to be settled) — round-scoped, never carried over.
+    // for the round about to be settled) â€” round-scoped, never carried over.
     s.roundViewerSide = s.viewerSide;
   }
   private shouldWaitForNumber(nextPhase: string): boolean {
@@ -1910,7 +2079,7 @@ export class ValProjectionSession {
     // A published round fact is per-round GAME evidence: it can only come from a
     // match that is actually being played, so it outranks the runtime's
     // session-level phase, which lags the match load (see `roundFactsSeen`).
-    // Only the session phase is touched — no per-player value.
+    // Only the session phase is touched â€” no per-player value.
     s.roundFactsSeen = true;
     if (s.sessionPhase !== "live" && s.sessionPhase !== "ending") {
       s.sessionPhase = "live";
@@ -1944,7 +2113,7 @@ export class ValProjectionSession {
       // left roundStartScore null, so the authoritative score at 05:45:58
       // {won:1,lost:0} could not settle the round (no roundEnd, no
       // roundHistory[1]). Run the same round-start bookkeeping the shopping
-      // phase runs — no value is invented, it is the documented round-start
+      // phase runs â€” no value is invented, it is the documented round-start
       // scoping applied to the phase we actually received.
       if (firstPhaseOfRound) this.beginRoundBookkeeping();
       // Round-clock base for the timeout reason (VS parity: ~100s round time).
@@ -1952,8 +2121,8 @@ export class ValProjectionSession {
       s.combatStartedAt = Date.now();
       s.combatStartedRound = s.roundNumber;
       // Derived loadout value from the authoritative money stream:
-      // spent = buy-start credits − credits now (clamped at 0). This is what
-      // populates the Buy Round Loadout column — GEP never reports it.
+      // spent = buy-start credits âˆ’ credits now (clamped at 0). This is what
+      // populates the Buy Round Loadout column â€” GEP never reports it.
       for (const p of s.roster ?? []) {
         const start = this.creditsAtRoundStart.get(this.normalizeName(p.displayName));
         if (start != null && p.credits != null) {
@@ -1991,15 +2160,23 @@ export class ValProjectionSession {
 
   // Agent-select cache gate: when the session enters pregame (agent select),
   // the GEP scoreboard cache still re-reports the PREVIOUS game's agents for
-  // players who haven't locked in — portraits would render as if already
+  // players who haven't locked in â€” portraits would render as if already
   // selected. Stored agents are cleared and character evidence is ignored for
   // a short cache-flush window; locked-in players re-report after it.
   private agentGateUntil = 0;
-  // Players observed dead this round — they respawn at the next buy phase
+  // Players observed dead this round â€” they respawn at the next buy phase
   // WITHOUT their gun+shield (Valorant rules); tracked so the buy-round cards
   // stop showing a dead player's old Vandal ("gun doesn't update").
   private diedLastRound = new Set<string>();
-  /** Credits captured at each round's buy start — base for the derived loadout value. */
+  /**
+   * Pending shield-zero reports per player: the first zero-tier report outside
+   * shopping is HELD (single spurious zero, self-damage race); a persisted
+   * zero — a repeat report OR no contradictory report for4 s — is honored so
+   * the icon disappears when the shield is really gone (both reported
+   * directions, live 2026-10-18).
+   */
+  private shieldZeroStreak = new Map<string, { n: number; firstAt: number }>();
+  /** Credits captured at each round's buy start â€” base for the derived loadout value. */
   private creditsAtRoundStart = new Map<string, number>();
   // Anchor hysteresis: GEP's team field can alternate between facts; only a
   // team value that persists commits a re-anchor (stops scoreline side swaps).
@@ -2018,29 +2195,29 @@ export class ValProjectionSession {
   }
 
   /**
-   * PASS 7D — resolve the roster row a scoreboard frame belongs to.
+   * PASS 7D â€” resolve the roster row a scoreboard frame belongs to.
    *
    * Pass 6 keys the relay board on the engine's own player id, but the merge
    * itself looked a row up by DISPLAY NAME only. The session snapshot can name a
    * player differently from the GEP scoreboard (its `name` field is the AGENT name
-   * until the Name Service resolves — observed live as display names
+   * until the Name Service resolves â€” observed live as display names
    * "Jett"/"Sage"/"Raze"), so the same player could produce TWO rows: one carrying
    * the GEP telemetry (agent/weapon/shield/credits) and one carrying the
-   * snapshot's (KDA). The relay then published whichever won its sort — the
+   * snapshot's (KDA). The relay then published whichever won its sort â€” the
    * reported "K/D/A updates but the agent icon, loadout, shield and credits do
-   * not" — and the extra row cost a real player a slot in the 5-per-side cap
+   * not" â€” and the extra row cost a real player a slot in the 5-per-side cap
    * (`relay_roster_over_contract {kept:10, dropped:1, droppedNames:["Jett"]}`).
    *
    * Precedence:
-   *   1. the SAME engine id — the only definitive identity, and what makes an
+   *   1. the SAME engine id â€” the only definitive identity, and what makes an
    *      agent-named snapshot row and a real-name scoreboard frame one player;
-   *   2. otherwise the normalized display name — Pass 6's rule that WITHIN a
+   *   2. otherwise the normalized display name â€” Pass 6's rule that WITHIN a
    *      match the established row OWNS its name: a frame whose id is unknown or
    *      disagrees still merges into that row, the FIRST id wins (never re-keyed)
    *      and no phantom identity is created;
    *   3. only when neither matches is this a player we do not have: a new row.
    *
-   * The name fallback is deliberately NOT restricted to id-less rows — that made
+   * The name fallback is deliberately NOT restricted to id-less rows â€” that made
    * a disagreeing id mint a phantom row and broke Pass 6's "no phantom identity".
    */
   private findRosterRow(
@@ -2085,7 +2262,7 @@ export class ValProjectionSession {
    * A kill can only happen while the round is being fought (the buy phase is
    * frozen and deals no damage), so a kill fact is proof the phase advanced.
    * This is exactly the fork dialect's blind spot: R1/R2 published NO round
-   * facts at all (live 2026-09-25 02:07:18-02:09:14 — the first round fact
+   * facts at all (live 2026-09-25 02:07:18-02:09:14 â€” the first round fact
    * arrived with round 3, `3/shopping`), so with a score-derived buy phase the
    * scene stayed on BuyRound through the whole first combat and the kill feed
    * stopped accumulating (the guard below drops kills outside combat).
@@ -2099,11 +2276,11 @@ export class ValProjectionSession {
     const s = this.s;
     if (s.roundPhase === "combat" || s.roundPhase === "end") return;
     // A kill landing right after a settlement belongs to the round that just
-    // ended — the engine's kill burst trails the score by milliseconds, and the
+    // ended â€” the engine's kill burst trails the score by milliseconds, and the
     // next round is in its BUY phase, not in combat.
     if (s.roundEndedAt !== null && Date.now() - s.roundEndedAt < 6000) return;
     // Derived phase with a derived round number: one score point == one
-    // completed round (validated against the engine's own facts — its round
+    // completed round (validated against the engine's own facts â€” its round
     // numbers for R3..R21 were exactly blue+red+1, live 2026-09-25).
     s.roundNumber = Math.max(s.roundNumber, s.blue + s.red + 1);
     s.publishedNumber = s.roundNumber;
@@ -2117,7 +2294,7 @@ export class ValProjectionSession {
   /**
    * The roster rows a kill/death name resolves to: an exact normalized match
    * first, otherwise a UNIQUE fuzzy match. Ambiguous names resolve to nothing
-   * (identity is never guessed) — which is also what keeps a fabricated ACE
+   * (identity is never guessed) â€” which is also what keeps a fabricated ACE
    * impossible from an unattributable kill.
    */
   private resolveRosterRows(name: string): NonNullable<HudRelayState["roster"]> {
@@ -2140,12 +2317,12 @@ export class ValProjectionSession {
     if (s.roundPhase !== "combat" && s.roundPhase !== "unknown") return;
     const aKey = this.normalizeName(attacker);
     const vKey = this.normalizeName(victim);
-    // PASS 8 — a SELF-KILL is a death, never a credited kill.
+    // PASS 8 â€” a SELF-KILL is a death, never a credited kill.
     //
     // The engine's kill feed reports self-inflicted deaths (fall damage, spike
     // detonation, a self-nade, or a malformed frame) as attacker === victim.
-    // Crediting them inflated the player's K/D and — because Team Ace is "every
-    // winner got at least one kill" (line ~2338) — handed a FALSE Team Ace to a
+    // Crediting them inflated the player's K/D and â€” because Team Ace is "every
+    // winner got at least one kill" (line ~2338) â€” handed a FALSE Team Ace to a
     // team whose only "kill" was one of its own players dying to themselves.
     // Ace was already safe: `provenAce` requires every victim to be on the
     // LOSING side, so the killer's own name can never satisfy it. The death is
@@ -2244,7 +2421,7 @@ export class ValProjectionSession {
    *   - and a complete losing team (exactly five rows), because "all five
    *     opponents" is unverifiable on a partial board.
    * When the telemetry cannot prove that, the round gets the normal
-   * classification instead — an ACE is never invented.
+   * classification instead â€” an ACE is never invented.
    */
   private provenAce(
     winners: NonNullable<HudRelayState["roster"]>,
@@ -2261,10 +2438,10 @@ export class ValProjectionSession {
   }
 
   /** The viewer's side for a given round, derived from the snapshot's start side. */
-  /** Side of the WINNING team for the round — from the snapshot's start side. */
+  /** Side of the WINNING team for the round â€” from the snapshot's start side. */
   private winnerSideFor(winner: 0 | 1, round: number): "attacker" | "defender" | null {
     // TEAM INDEX IS NOT A SIDE. The engine anchors the viewer to blue/left
-    // for the whole match, so "viewer won" is simply winner === 0 — deriving
+    // for the whole match, so "viewer won" is simply winner === 0 â€” deriving
     // it from viewerStartSide (the old viewerTeamIsTeam0 conflation) inverted
     // the win side for every match where the viewer started on defense.
     const viewerWon = winner === 0;
@@ -2310,7 +2487,7 @@ export class ValProjectionSession {
     // PASS 7C: the settlement above establishes the round this classification
     // belongs to. A label left over from the PREVIOUS round must never describe
     // this winner (live 2026-09-30: the enemy's round-3 ACE was published with
-    // round 4's blue win). Same rule as the round_settled path — never clear a
+    // round 4's blue win). Same rule as the round_settled path â€” never clear a
     // label that could still be this round's own (an equal-count end phase can
     // resolve the winner only after the label lands).
     this.dropStaleGameEventLabel();
@@ -2328,7 +2505,7 @@ export class ValProjectionSession {
       (p) => !s.roundDeaths.has(this.normalizeName(p.displayName)),
     );
     const losers = roster.filter((p) => p.teamIndex === (winner === 0 ? 1 : 0));
-    // Ceremony classification needs a FULL board — with GEP rosters partially
+    // Ceremony classification needs a FULL board â€” with GEP rosters partially
     // populated, alive counts were garbage and CLUTCH/FLAWLESS fired randomly
     // on incomplete teams ("game event roundwinreason are complete random").
     const fullBoard = winners.length === 5 && losers.length === 5;
@@ -2342,7 +2519,7 @@ export class ValProjectionSession {
       }
     }
     // 2) Ace: ONE player eliminated all FIVE opponents. A kill count is not
-    //    evidence — this requires five DISTINCT victims that are all on the
+    //    evidence â€” this requires five DISTINCT victims that are all on the
     //    losing side (see provenAce). Live 2026-09-30: a 3-kill round displayed
     //    ACE because the engine's duplicated kill facts doubled the counter.
     if (this.provenAce(winners, losers)) {
@@ -2354,7 +2531,7 @@ export class ValProjectionSession {
       this.setGameEvent("Team Ace");
       return;
     }
-    // 4) Flawless: no winner died (full board only — same garbage-alive guard).
+    // 4) Flawless: no winner died (full board only â€” same garbage-alive guard).
     if (fullBoard && winners.length > 0 && winners.every((p) => aliveWinners.includes(p))) {
       this.setGameEvent("Flawless");
       return;
@@ -2365,13 +2542,13 @@ export class ValProjectionSession {
   }
 
   /**
-   * PASS 7C — drop a dangling Game Event classification.
+   * PASS 7C â€” drop a dangling Game Event classification.
    *
    * The label is published through the buy phase on purpose (the round-win
    * banner), so it can outlive its own settlement by one round transition. Every
    * time a settlement lands, this confirms that the label and the settlement
    * describe the SAME round; when they don't, the label is dropped (published as
-   * null) rather than being paired with a different round's winner — the exact
+   * null) rather than being paired with a different round's winner â€” the exact
    * shape of the reported "FLAWLESS/ACE shown on the enemy side".
    *
    * Two states are deliberately left untouched:
@@ -2393,7 +2570,7 @@ export class ValProjectionSession {
   }
 
   /**
-   * PASS 7C — publish a Game Event classification WITH its ownership.
+   * PASS 7C â€” publish a Game Event classification WITH its ownership.
    *
    * Every classification the projection derives must record which settled round
    * it describes at the same moment it is published; otherwise the label would
@@ -2412,7 +2589,7 @@ export class ValProjectionSession {
     const roster = this.s.roster ?? [];
     if (roster.length === 0) return false;
     // The roster's isAlive persists through the buy-phase wipe (roundDeaths is
-    // cleared there) — late score-fact settlements still see the real wipe.
+    // cleared there) â€” late score-fact settlements still see the real wipe.
     return !roster.some(
       (p) => p.teamIndex === (1 - winner) && p.isAlive !== false,
     );
@@ -2423,17 +2600,17 @@ export class ValProjectionSession {
    *
    * Two live orderings exist for the same round (both captured from the blob
    * engine on :7413):
-   *   A) terminal event BEFORE settlement — `spike_detonated` → `round_phase
-   *      end` (live 2026-09-25 02:31:54) ⇒ the latch is consumed by settle().
-   *   B) terminal event AFTER settlement — `round_phase end` 02:13:18.950 →
-   *      `score` .951 → `spike_defused` + `planted_location` .951 ⇒ the round
+   *   A) terminal event BEFORE settlement â€” `spike_detonated` â†’ `round_phase
+   *      end` (live 2026-09-25 02:31:54) â‡’ the latch is consumed by settle().
+   *   B) terminal event AFTER settlement â€” `round_phase end` 02:13:18.950 â†’
+   *      `score` .951 â†’ `spike_defused` + `planted_location` .951 â‡’ the round
    *      was already stamped `elimination` (the engine emits no plant-time
    *      frame, so the global spike state was null) and the HUD showed the
    *      generic kill icon for a defused round.
    * Ordering B is handled by RE-LABELLING only the round that is settling right
    * now (round-local: the round whose settlement was just recorded, still owned
    * by the end phase or by a buy phase WE derived from the score, and only from
-   * a non-terminal fallback reason — never downgrades an explicit/terminal one).
+   * a non-terminal fallback reason â€” never downgrades an explicit/terminal one).
    * A late event for an already-recorded PREVIOUS round never relabels anything.
    */
   private latchTerminalSpike(outcome: "defused" | "detonated"): void {
@@ -2441,7 +2618,7 @@ export class ValProjectionSession {
     if (s.roundNumber <= 0) return;
     const terminal: "detonation" | "defusion" =
       outcome === "detonated" ? "detonation" : "defusion";
-    // The settlement just recorded is the round the terminal event belongs to —
+    // The settlement just recorded is the round the terminal event belongs to â€”
     // NOT necessarily s.roundNumber: the score-stream sync (HU-014) advances the
     // projection into the next round's buy phase the moment the score lands, and
     // the engine's spike burst arrives milliseconds later (same live ordering B).
@@ -2466,9 +2643,9 @@ export class ValProjectionSession {
 
   /**
    * THE authoritative round-settlement stamp. Every winner source funnels
-   * through here — the GEP round_outcome transition, the runtime's
+   * through here â€” the GEP round_outcome transition, the runtime's
    * round_settled event, the end-phase settle() heuristic and the score-stream
-   * round sync (HU-014) — so the engine emits exactly ONE roundEnd result per
+   * round sync (HU-014) â€” so the engine emits exactly ONE roundEnd result per
    * round (single source of truth).
    */
   private recordRoundWinner(
@@ -2479,7 +2656,7 @@ export class ValProjectionSession {
   ): void {
     const s = this.s;
     // Which round is this settlement about? When the caller has no explicit
-    // round number, the event describes the round the ENGINE is settling — which
+    // round number, the event describes the round the ENGINE is settling â€” which
     // is the PREVIOUS one while a phase WE derived from the score is still on the
     // board (the engine has not named the new round yet). Without this, a late
     // `round_outcome` transition for the just-settled round would be stamped onto
@@ -2492,13 +2669,13 @@ export class ValProjectionSession {
         : s.roundNumber);
     // Idempotence is ROUND-SCOPED: `roundEnd` outlives the round (it is the
     // evidence the buy brief renders), so "already settled" can never be decided
-    // by the winner alone — the next round with the same winner would be
+    // by the winner alone â€” the next round with the same winner would be
     // swallowed whole.
     if (round > 0 && s.lastSettledRound >= round) {
       // A LATE explicit reason from the runtime is still ground truth for the
       // round it names: the engine emits its score BEFORE round_settled, so the
       // score stream may have settled the round first. Only the reason may be
-      // upgraded — never a re-settle, never a winner flip.
+      // upgraded â€” never a re-settle, never a winner flip.
       if (
         explicitReason &&
         s.roundEnd !== null &&
@@ -2509,17 +2686,29 @@ export class ValProjectionSession {
         const entry = s.roundHistory.find((h) => h.round === round);
         if (entry) entry.reason = explicitReason;
       }
+      // The engine's winningSide for THIS round is ground truth and can arrive
+      // AFTER the score settled the round — without this fill the
+      // ATTACKER/DEFENDER win label stayed missing below the team name
+      // (live 2026-10-18).
+      if (
+        winnerSide != null &&
+        s.roundEnd !== null &&
+        s.roundEnd.winner === winner &&
+        s.roundEnd.winnerSide !== winnerSide
+      ) {
+        s.roundEnd = { ...s.roundEnd, winnerSide };
+      }
       return;
     }
     if (round <= 0 && s.roundEnd !== null && s.roundEnd.winner === winner) return; // already settled this round
-    // Reason priority: explicit (runtime ground truth) → spike outcome →
-    // round-clock timeout → elimination.
+    // Reason priority: explicit (runtime ground truth) â†’ spike outcome â†’
+    // round-clock timeout â†’ elimination.
     // GEP provides no explicit timeout event; the round clock is the timing
     // evidence we track, and both clocks below are ROUND-SCOPED.
     let reason: "elimination" | "detonation" | "defusion" | "time";
     if (explicitReason) reason = explicitReason;
     // HU-013: the round's OWN terminal spike outcome (latched at event time)
-    // outranks the global spike state — the next round's plant can overwrite
+    // outranks the global spike state â€” the next round's plant can overwrite
     // `s.spike` within milliseconds of the defuse (live capture 2026-09-24).
     else if (s.terminalSpike?.round === round)
       reason = s.terminalSpike.outcome === "detonated" ? "detonation" : "defusion";
@@ -2532,7 +2721,7 @@ export class ValProjectionSession {
     else if (this.losingTeamWiped(winner)) reason = "elimination";
     // Timeout evidence (a): the round's OWN combat clock ran the full round
     // timer. Live timing: rounds are ~135-141 s wall-clock apart, i.e. the round
-    // timer (~100 s) plus the pre-round transition, so a settlement ≥100 s after
+    // timer (~100 s) plus the pre-round transition, so a settlement â‰¥100 s after
     // a combat fact we actually saw for this round can only be the timer.
     else if (
       s.combatStartedAt !== null &&
@@ -2541,7 +2730,7 @@ export class ValProjectionSession {
     )
       reason = "time";
     // Timeout evidence (b): no combat fact for this round at all (fork R1/R2
-    // stream no round facts) — the round's own start boundary plus the round
+    // stream no round facts) â€” the round's own start boundary plus the round
     // timer is still authoritative. 130 s = regulation buy (30 s) + round timer
     // (100 s): a round can only exceed it when the timer expired, because a
     // wipe (handled above) or the spike (handled above) are the only other ways
@@ -2568,7 +2757,7 @@ export class ValProjectionSession {
     // stamped.
     this.dropStaleGameEventLabel();
     if (s.gameEvent !== null && round > 0) s.gameEventRound = round;
-    // Stamp the settlement time — deriveScene holds the HUD (and the
+    // Stamp the settlement time â€” deriveScene holds the HUD (and the
     // endround banner) on screen for a grace period after this.
     s.roundEndedAt = Date.now();
     // ValoSpectra app-roundreasons parity: per-round win history for the
@@ -2582,12 +2771,12 @@ export class ValProjectionSession {
   }
 
   /**
-   * A COMPLETE losing side with nobody alive — elimination evidence.
+   * A COMPLETE losing side with nobody alive â€” elimination evidence.
    *
    * Full-board evidence only: the fork dialect publishes a single local row (the
    * relay board showed `roster: 1` for a whole live match, 2026-09-25), and "no
    * living rows on the other side" is trivially true for an opponent that has no
-   * rows at all — that would label every round an elimination.
+   * rows at all â€” that would label every round an elimination.
    */
   private losingTeamWiped(winner: "blue" | "red"): boolean {
     const s = this.s;
@@ -2604,7 +2793,7 @@ export class ValProjectionSession {
     }
     if ((s.roster ?? []).length > 0) {
       const alive = this.aliveByTeam();
-      // Only trust alive counts on a FULL 5v5 board — partial GEP rosters
+      // Only trust alive counts on a FULL 5v5 board â€” partial GEP rosters
       // made garbage alive counts decide winners randomly.
       const t0 = (s.roster ?? []).filter((p) => p.teamIndex === 0).length;
       const t1 = (s.roster ?? []).filter((p) => p.teamIndex === 1).length;
@@ -2630,16 +2819,16 @@ export class ValProjectionSession {
       viewerRole: s.viewerRole,
       // The local-player anchor for consumers: only the viewer's own row carries
       // ability telemetry, so a site that renders "my abilities" must be able to
-      // find that row. Published in the SAME spelling the roster row uses — the
+      // find that row. Published in the SAME spelling the roster row uses â€” the
       // identity dialects differ per source ("Viewer #TAG" from GEP scoreboard
       // rows vs "Viewer#TAG" from the engine snapshot), and an exact-match
       // consumer must not be asked to reconcile them (live 2026-09-29: the relay
-      // published "Viewer #亞…" while its only row read "Viewer#亞…").
+      // published "Viewer #äºžâ€¦" while its only row read "Viewer#äºžâ€¦").
       viewerName: this.localRosterEntry()?.displayName ?? s.viewerName,
 
       // HU-001b: publish the provider-maintained side (contract fields already
       // exist in packages/contracts + the snapshot mapping; the relay literal
-      // was the missing link — the website's winnerSideFromViewer/Start chain
+      // was the missing link â€” the website's winnerSideFromViewer/Start chain
       // reads as null without it).
       viewerSide: s.viewerSide,
       viewerStartSide: s.viewerStartSide,
@@ -2657,7 +2846,7 @@ export class ValProjectionSession {
       gameEvent: s.gameEvent,
       // PASS 7C: which round the Game Event label belongs to. Equal to
       // `roundEnd.round` while both describe the same round, null whenever they
-      // do not — a consumer must never pair a winner with another round's
+      // do not â€” a consumer must never pair a winner with another round's
       // classification. The projection already drops a stale label here, so this
       // is the contract that makes the invariant checkable (and it is what the
       // buy scene keys on).
@@ -2693,7 +2882,7 @@ export class ValProjectionSession {
   }
 
   /**
-   * PASS 7C — the settled round a consumer can trust the Game Event label for.
+   * PASS 7C â€” the settled round a consumer can trust the Game Event label for.
    *
    * The single invariant every consumer needs:
    *
@@ -2810,7 +2999,7 @@ export class ValProjectionSession {
     // the live game on app start).
     if (s.restorePending) return null;
     // PASS 7B: a FRESH pre-game phase (agent select for the match being entered)
-    // outranks the settled-match latch below — it is the authoritative evidence
+    // outranks the settled-match latch below â€” it is the authoritative evidence
     // that the previous match's Post Game is over. The latch still wins while the
     // popout sits in the menu/ending (no fresh pre-game evidence arrives then).
     const freshPregame =
@@ -2818,7 +3007,7 @@ export class ValProjectionSession {
       s.sessionPhaseAt !== null &&
       Date.now() - s.sessionPhaseAt < 45_000;
     if (freshPregame) return "agent-select";
-    // A settled match ALWAYS wins over generic idle/unknown session state —
+    // A settled match ALWAYS wins over generic idle/unknown session state â€”
     // the old order let sessionPhase 'idle' (after the match ends) erase
     // Post Game and drop the popout back to the HUD scene. Post Game stays
     // until a genuine new match resets matchWinner (or a production reset).
@@ -2829,16 +3018,16 @@ export class ValProjectionSession {
     // established must not veto it. Live 2026-09-30 (mid-match HU restart): the
     // capture engine re-published round/KDA/shield facts within seconds but its
     // session phase stayed `unknown`, and returning null here froze the popout on
-    // its URL-picked scene (round 6/7 played with `scene: null`) — Pass 1's "R1
+    // its URL-picked scene (round 6/7 played with `scene: null`) â€” Pass 1's "R1
     // must work without complete telemetry" rule.
     const roundPhaseKnown =
       s.roundPhase === "shopping" || s.roundPhase === "combat" || s.roundPhase === "end";
     if (s.sessionPhase === "unknown" && !roundPhaseKnown) return null;
-    // GEP round facts are the real-time truth for the current phase — they
+    // GEP round facts are the real-time truth for the current phase â€” they
     // override the engine snapshot's session-level phase which can be stale
-    // during match transitions (pregame → live).
+    // during match transitions (pregame â†’ live).
     if (s.roundPhase === "shopping") {
-      // Round-end hold: the endround banner just played — keep the HUD scene
+      // Round-end hold: the endround banner just played â€” keep the HUD scene
       // (and the banner) on screen for a grace period before switching to the
       // buy scene, matching the roundwin-box timing of VS-class overlays.
       //
@@ -2846,7 +3035,7 @@ export class ValProjectionSession {
       // The engine's own `end` phase already holds the HUD for the whole ceremony
       // (measured 7.0-7.1s in every capture; the RoundCeremony plays 6.6s), so
       // applying an age-based hold after the ENGINE has named the next round's
-      // buy phase could push BuyRound past the end of the buy phase entirely —
+      // buy phase could push BuyRound past the end of the buy phase entirely â€”
       // the reported "BuyRound occasionally failed to replace IngameHUD". An
       // authoritative round fact outranks a derived hold here exactly as it does
       // in latchTerminalSpike (line ~2443) and recordRoundWinner (line ~2477).
@@ -2855,7 +3044,7 @@ export class ValProjectionSession {
       if (ceremonyHold) return "ingame-hud";
       return "buy-round";
     }
-    // A settled match always wins — never sit on the HUD after match point.
+    // A settled match always wins â€” never sit on the HUD after match point.
     if (s.matchWinner) return "post-game";
     if (s.roundPhase === "combat") {
       // Match-start grace: some GEP cycles skip the round-1 shopping phase and
@@ -2874,13 +3063,13 @@ export class ValProjectionSession {
       return "ingame-hud";
     }
     if (s.roundPhase === "end") return "ingame-hud";
-    // No concrete round phase — use sessionPhase for match-level scenes.
+    // No concrete round phase â€” use sessionPhase for match-level scenes.
     if (s.sessionPhase === "loading" || s.sessionPhase === "pregame") return "agent-select";
     if (s.sessionPhase === "ending" && !s.newMatchPending) return "post-game";
     if (s.blue >= 13 || s.red >= 13) return "post-game";
     // Pre-round-1 of a real match: the provider emits match_id during agent
     // select while round facts have not started yet (roundPhase stays
-    // "unknown"). Once the session goes LIVE the match has loaded — show the
+    // "unknown"). Once the session goes LIVE the match has loaded â€” show the
     // buy scene immediately instead of freezing on agent-select. A nonzero
     // score/round means a mid-round reconnect: show the HUD.
     if (!s.roundPhase || s.roundPhase === "unknown") {
@@ -2937,7 +3126,7 @@ export class ValProjectionSession {
       };
       nodeFs.writeFileSync(ValProjectionSession.CACHE_FILE, JSON.stringify(payload), "utf8");
     } catch {
-      // best-effort — a cache failure must never affect the live projection
+      // best-effort â€” a cache failure must never affect the live projection
     }
   }
 
@@ -2980,7 +3169,7 @@ export class ValProjectionSession {
         roster: this.bootContinuity.rosterCount,
       });
     } catch {
-      // corrupted cache — start clean
+      // corrupted cache â€” start clean
     }
   }
 

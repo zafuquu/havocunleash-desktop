@@ -1,5 +1,5 @@
 // Bundles the desktop main + inlines deps into a single dist/main.js,
-// then packages a portable Electron exe with electron-builder.
+// then packages the Windows NSIS installer (plus unpacked dir) with electron-builder.
 import { build } from 'esbuild';
 import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -121,6 +121,24 @@ async function main() {
   } else {
     console.warn('[pack] @overwolf/ow-electron not installed — GEP capture will be unavailable');
   }
+  // Hard gate: the npm package is only scaffolding (install.js + types). The
+  // real GEP engine (dist/electron.exe, ~200 MB) is downloaded separately by
+  // `npm run ow:install` — without it the shipped app silently cannot capture
+  // any game data. Refuse to build a GEP-less installer unless explicitly
+  // allowed (HU_PACK_ALLOW_NO_GEP=1 for mock-only dev packages).
+  const owExe = path.join(owOut, 'dist', 'electron.exe');
+  if (!existsSync(owExe)) {
+    const gateMsg =
+      '[pack] ow-electron GEP engine missing: ' + owExe + '\n' +
+      '[pack] The npm package only ships installer scaffolding; run `npm run ow:install`\n' +
+      '[pack] (downloads the ~200 MB GEP engine into node_modules) and pack again.';
+    if (process.env.HU_PACK_ALLOW_NO_GEP === '1') {
+      console.warn(gateMsg);
+    } else {
+      throw new Error(gateMsg + '\n[pack] Set HU_PACK_ALLOW_NO_GEP=1 to build a mock-only package anyway.');
+    }
+  }
+
   const gepSrc = path.join(root, 'services', 'game-data-runtime', 'gep-provider');
   const gepOut = path.join(appDir, 'dist', 'gep-provider');
   execSync('cmd /c xcopy /E /I /Y "' + gepSrc + '" "' + gepOut + '"', { stdio: 'inherit' });
@@ -164,14 +182,14 @@ async function main() {
   writeFileSync(buildInfoPath, JSON.stringify(buildInfo, null, 2) + '\n');
   console.log('[pack] wrote', buildInfoPath);
 
-  // 4. electron-builder: unpacked dir (stable exe we register protocols to)
-  //    first, then the portable single-file exe as a convenience.
+  // 4. electron-builder: NSIS installer. The target packs win-unpacked first
+  //    (the stable exe we register protocols to), then compiles the setup exe.
   //    An alternate output dir (argv[2]) lets us build a candidate payload while
   //    the running instance still holds release-fresh/win-unpacked open.
   const outDir = process.argv[2] || 'release-fresh';
-  console.log(`[pack] packaging win-unpacked into ${outDir} (stable exe)...`);
-  execSync(`npx electron-builder --win dir -c.directories.output=${outDir}`, { cwd: appDir, stdio: 'inherit', env: { ...process.env } });
-  console.log(`[pack] DONE. win-unpacked at apps/desktop/${outDir}/win-unpacked/Havoc Unleash.exe`);
+  console.log(`[pack] packaging NSIS installer + win-unpacked into ${outDir}...`);
+  execSync(`npx electron-builder --win nsis -c.directories.output=${outDir}`, { cwd: appDir, stdio: 'inherit', env: { ...process.env } });
+  console.log(`[pack] DONE. Setup: apps/desktop/${outDir}/Havoc Unleash Setup.exe | win-unpacked: apps/desktop/${outDir}/win-unpacked/Havoc Unleash.exe`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

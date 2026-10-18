@@ -118,6 +118,9 @@ export function formatRoster(data: Record<string, unknown>): { key: "roster"; va
       locked: toBool(data.locked),
       position: toNum(data.position),
       team: toNum(data.team),
+      // Viewer-relative identity flags (same contract as formatPlayer).
+      local: data.local === true || data.is_local === true,
+      teammate: typeof data.teammate === "boolean" ? data.teammate : undefined,
     },
   };
 }
@@ -127,7 +130,11 @@ export function formatPlayer(data: Record<string, unknown>): { key: string; valu
   // players it tracked this cycle. Defaulting to 0/false phantom-killed healthy
   // players the moment a scoreboard update fired (the "took damage -> death
   // state" bug on the overlay).
-  const armorRaw = toNum(data.armor ?? data.shield_type);
+  // Field sources across dialects: the GEP package's match_info scoreboard rows
+  // carry the TIER in `shield` (live 2026-10-18: {"shield":3} with no armor key
+  // — reading `armor ?? shield_type` alone mapped EVERY row to 0, the "shield
+  // never appears" defect), the VS-family dialect uses initialArmor.
+  const armorRaw = toNum(data.shield ?? data.armor ?? data.shield_type ?? data.initialArmor);
   // GEP's armor field is the shield TIER enum (VS parity — ValorantInternal
   // Translator.Armor): 0 none / 1 light / 2 heavy / 3 enemy-unknown / 4 regen.
   // Map the enum to its point value; already-numeric point values (25/50)
@@ -155,6 +162,13 @@ export function formatPlayer(data: Record<string, unknown>): { key: string; valu
       shieldType: Number.isInteger(armorRaw) && armorRaw >= 0 && armorRaw <= 4 ? armorRaw : undefined,
       player_id: String(data.player_id ?? ""),
       team: toNum(data.team),
+      // Local-player identity evidence the projection's viewer-left anchoring
+      // REQUIRES (is_local -> viewerName/viewerGepTeam, teammate -> cold-start
+      // side). Stripping these here left viewerName null for whole matches
+      // (live 2026-10-18: team block rendered on the right, abilities never
+      // attached -> grey skill icons, no YOU tag).
+      is_local: data.is_local === true || data.isLocalPlayer === true,
+      teammate: typeof data.teammate === "boolean" ? data.teammate : undefined,
     },
   };
 }

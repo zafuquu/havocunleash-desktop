@@ -1,5 +1,5 @@
 /**
- * Desktop PKCE sign-in — parity with the replica's auth flow
+ * Desktop PKCE sign-in — flows through the bridge's auth endpoints
  * (server/game-bridge.mjs `/auth/login` + `/electron/token`).
  *
  *   1. Generate a random `state` + S256 `code_challenge`, open
@@ -137,6 +137,7 @@ export function overlayPopoutUrl(
   roomCode: string,
   overlayId: string,
   screen = "default",
+  bridgeWs?: string,
 ): string {
   // local=1: the overlay page must consume the LOCAL authoritative stream
   // (ws://127.0.0.1:7103/ws/broadcast via the existing source-selection
@@ -144,7 +145,16 @@ export function overlayPopoutUrl(
   // popout ran on the remote bridge (bursty, 100-300 ms jitter) which is what
   // made scene/animation updates stutter. Remote operators simply never see a
   // local source and keep failing over to the bridge.
-  return `${appBase}/${roomCode}/${overlayId}?screen=${encodeURIComponent(screen)}&isPopout=true&local=1`;
+  // bridgeWs: the popout's BRIDGE source defaults to the hardcoded Render
+  // deployment (wss://hu-bridge.onrender.com/ws/live) — pass the configured
+  // bridge origin (converted to ws scheme) so self-hosted bridges receive the
+  // /ws/live feed too (local=1 keeps the local stream authoritative).
+  let url = `${appBase}/${roomCode}/${overlayId}?screen=${encodeURIComponent(screen)}&isPopout=true&local=1`;
+  if (bridgeWs) {
+    const wsUrl = bridgeWs.replace(/^http/, "ws");
+    url += `&bridgeWs=${encodeURIComponent(wsUrl)}`;
+  }
+  return url;
 }
 
 /**

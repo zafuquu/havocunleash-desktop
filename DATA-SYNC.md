@@ -1,4 +1,4 @@
-# HAVOC Desktop Replica — Full Data Schema & Sync Sequence
+# Havoc Unleash — Full Data Schema & Sync Sequence
 
 This document is the authoritative contract that ties the desktop app, the
 game-data (Overwolf GEP) runtime, the bridge, and the website overlay together.
@@ -117,3 +117,92 @@ SSE pipeline.
 `HAVOC_DESKTOP_SKIP_LOGIN` (bypass), plus fork-specific
 `HAVOC_ROOM_ID`, `HAVOC_SCENARIO` (mock event),
 `HAVOC_SOURCE=overwolf` (use real GEP when available).
+
+## 9. Production ground truth (BLOB v1.37.5 reverse audit, 2026-10-17)
+
+Audited against the installed original (`%LOCALAPPDATA%\Programs\blob-desktop`,
+userData `%LOCALAPPDATA%\BLOB`, runtime logs `BLOB\game-data-runtime\logs\
+runtime.jsonl`, app logs `BLOB\blob-desktop\logs\app\session_*.jsonl`):
+
+- The REAL runtime (`blob-game-data-runtime.exe`, standalone pkg) uses
+  **`gep.direct-addon`** — `ow-electron-gep-plugin.node` loaded directly in
+  Node (`pluginVersion 0.0.0.9`) — **plus** a Riot-client local API path
+  (`riot_request_*` / `valorant_api_*` dominate the logs; GEP is the
+  realtime supplement). The real desktop connects to its runtime as a
+  "raw client" (`rawInfoListener` / `rawGameEventListener`).
+- Our Electron GepPackage mode (PackageManager emulation in
+  `gep-provider/gep-renderer.js`) is the supported fallback; four
+  package-mode pitfalls were found and fixed (2026-10-17):
+  1. `GameStatusService.init()` fetches
+     `game-events-status.overwolf.com/gamestatus_prod.json` ASYNC; the
+     first `gameStatusDisabled()` call races it → null status → injection
+     AND `game-detected` silently skipped. Fix: instant synthetic status
+     for 21640 via `window.fetch` interception.
+  2. The package's non-utility game-info lookup compares a LOWERCASED
+     detection name against mixed-case `processName` table entries. Fix:
+     self-healing one-line patch in provider `index.js` on load.
+  3. The PM's shared utility service normally supplies `options.gameId`
+     to `PluginService.connect()`; without it the addon call
+     `gep.connect(undefined, pid, ...)` fails ("Expected first argument to
+     be game id"). Fix: `connect` wrapper maps `VALORANT-Win64-Shipping`
+     → 21640.
+  4. Feature requests must be the handler's own auto-default
+     `["game_info","match_info","me","kill","death","gep_internal"]` —
+     NOT the narrower 3-feature set (kills kill/death events = site
+     killfeed/ace tracking) and NOT the full `getFeatures()` list (can be
+     rejected wholesale).
+- Website/overlay contract (zafuquu/HU `OverlayPopout.tsx`): three
+  whole-snapshot sources — local `ws://127.0.0.1:7103/ws/broadcast`
+  (`{kind:'broadcast', observedAt, snapshot}`, `?local=1`), bridge
+  `wss://<bridge>/ws/live` (`?bridgeWs=` now passed by
+  `overlayPopoutUrl`), Supabase mirror `site_settings live:<roomCode>`.
+  Scene selection: `forceScene` > `state.scene` (whitelist
+  agent-select/buy-round/ingame-hud/post-game/map-interstitial) >
+  phase-derived > URL. The site assumes the ENGINE keeps the viewer on
+  LEFT/blue (projection re-anchor) and must never re-swap sides.
+- Known cosmetic gap (FIXED in bridge source 2026-10-18, pending Render
+  redeploy): the bridge's roundWin kill-banner team resolved via `lastFacts`,
+  which is null on the fork pass-through path → banner side defaulted to
+  `left`. Fixed: `teamSideOf(...) ?? huWinnerSide(data.winningCompetitorId)
+  ?? 'left'` — HU producers publish `winningCompetitorId` as the color side
+  ('blue'→left / 'red'→right under the engine's viewer re-anchor).
+
+## 10. Local-first data layer (Phase 1, 2026-10-18)
+
+Rule adopted from the original app's design: **the closest authoritative copy
+wins; everything upstream is a mirror.**
+
+```
+GEP package ──► projection (boot-cached) ──► snapshot.ts ──►┬─► HUD server  ──► /api/state + /ws/broadcast  (local overlay, sub-frame)
+        (250ms)      (disk-backed)                           ├─► producer client ──► bridge /live/ws  (WS ~250ms, low-latency path)
+                                                             ├─► bridge ──► Supabase live:<room> mirror (async, retried)
+                                                             └─► bridge-state.json + live-snapshot.json (restart-proof restore)
+```
+
+- **Desktop write-through (`hudServer.ts`)** — `publishBroadcast()` persists
+  the latest `{kind:'broadcast', observedAt, snapshot}` frame to
+  `%APPDATA%/@havoc-unleash-desktop/state/live-snapshot.json`
+  (throttled 1/s, atomic tmp+rename, failures non-fatal). `start()`
+  restores it BEFORE any live publish → overlay popouts repaint instantly
+  after an app restart; `stop()` does a final flush (quit loses nothing).
+  RESTORED frame is only shown until the first live publish overwrites it.
+- **Bridge persistence (`game-bridge.mjs` 1.2)** — the retained `/ws/live`
+  frame is written to `bridge-state.json` (throttled 1/s, atomic;
+  `BRIDGE_STATE_FILE` env override). Render free-plan sleep/redeploys
+  repopulate popouts instantly instead of "reconnecting" until the next
+  producer snapshot. Supabase keeps its own copy — this is only for the
+  low-latency /ws/live path.
+- **Supabase mirror retry (1.3)** — `syncSnapshotToSupabase` no longer
+  log-and-forgets: writes go through `queueMirrorWrite()` (latest-wins,
+  single-flight, 3 attempts × linear backoff 500/1000/1500ms). A Supabase
+  hiccup can no longer silently drop the mirror while the WS path keeps
+  flowing.
+- **bridge-deploy/ folder was STALE** (predated control-actions.mjs) —
+  resynced from root + `control-actions.mjs` added; README-DEPLOY now lists
+  5 files. Render deploys the REPO ROOT (`node game-bridge.mjs`).
+- **Deferred (1.4, frozen until stability lands):** LAN-first source — the
+  website preferring a raw `127.0.0.1:7103/state.json` snapshot before the
+  ws/broadcast channel.
+- Tests: `apps/desktop/test/local-snapshot-persistence.test.mjs` (persist →
+  atomic file → fresh-server restore → no-tmp). Desktop 191/191, runtime
+  24/24.

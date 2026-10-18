@@ -741,7 +741,17 @@ export class RiotIdentitySource {
           this.emit({
             kind: "new_info_update",
             key: "match_score",
-            value: { team_0: self.scoreAlly, team_1: self.scoreEnemy },
+            // Viewer-relative {won, lost} — NEVER {team_0: ally, team_1: enemy}.
+            // That form is the OPPOSITE of GEP's native convention (team_1 =
+            // the local player) and arrived under the SAME key, fighting every
+            // native match_score fact: the reported split-second score swaps,
+            // round-1 static board (each inverted poll read as a score
+            // DECREASE -> new-match wipe -> scene stuck on buy-round), strip
+            // winners and flipped ceremonies — worst in custom lobbies where
+            // presence never resolves a matchId and this path runs all match
+            // (live 2026-10-18). The projection dispatches on SHAPE: won IS
+            // the viewer's score by definition, unambiguous under any key.
+            value: { won: self.scoreAlly, lost: self.scoreEnemy },
           });
         }
         // INGAME with no resolvable match id: still a live match.
@@ -807,7 +817,14 @@ export class RiotIdentitySource {
       this.emit({
         kind: "new_info_update",
         key: "match_score",
-        value: { team_0: self.scoreAlly, team_1: self.scoreEnemy },
+        // VIEWER-RELATIVE under the shared wire contract (team_1 = the viewer's
+        // score, matching GEP match_info): emitting {team_0: ally, team_1:
+        // enemy} here arrived under the SAME key as the GEP emission with the
+        // OPPOSITE convention, and as the later poller it won — live
+        // 2026-10-18: the viewer's 6-0 run broadcast as 0-6 with their score
+        // on the right. {won,lost} is unambiguous (normalizeScore maps won ->
+        // team_1): ally IS the viewer by definition.
+        value: { won: self.scoreAlly, lost: self.scoreEnemy },
       });
     }
     this.lastMatchId = matchId;

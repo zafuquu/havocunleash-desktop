@@ -15,9 +15,13 @@ export interface ValorantPresence {
 }
 
 const KNOWN_EXES = ["VALORANT-Win64-Shipping.exe", "VALORANT.exe"];
-const SHORTCUT_DIRECTORIES = [
-  "F:\\Riot Games\\VALORANT\\live\\ShooterGame\\Binaries\\Win64",
-] as const;
+// Probe the common Riot install roots on every drive letter — the previous
+// single hardcoded path only matched one machine's layout. This only resolves
+// the optional `executablePath` metadata (presence detection is tasklist-based
+// and does not depend on it), so a cheap existsSync sweep is enough.
+const SHORTCUT_DIRECTORIES = ["C", "D", "E", "F"].map(
+  (drive) => `${drive}:\\Riot Games\\VALORANT\\live\\ShooterGame\\Binaries\\Win64`,
+);
 
 export function checkValorantProcess(): ValorantPresence {
   try {

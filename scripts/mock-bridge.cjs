@@ -36,6 +36,15 @@ const server = http.createServer((req, res) => {
   if (pathname === "/api/trpc/realtime.desktopRequestAccess") {
     return sendJson(res, [{ result: { data: { json: { requestId: "req-1", status: "accepted" } } } }]);
   }
+  if (pathname === "/api/trpc/realtime.desktopRequestStatus") {
+    return sendJson(res, [{ result: { data: { json: { requestId: "req-1", status: "accepted", roomId: "TEST", roomName: "Mock Room", roomGame: "VAL", overlayId: "ingame-hud" } } } }]);
+  }
+  if (pathname === "/api/trpc/realtime.desktopCancelAccess") {
+    return sendJson(res, [{ result: { data: { json: null } } }]);
+  }
+  if (pathname === "/api/trpc/rooms.getLimitsOfRoom") {
+    return sendJson(res, [{ result: { data: { json: { specialLimits: null } } } }]);
+  }
   if (pathname === "/electron/token") {
     return sendJson(res, { token: ticket, user: { id: "dev-mock", email: "dev@mock", name: "Mock", image: null } });
   }
