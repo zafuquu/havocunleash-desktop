@@ -30,6 +30,10 @@ export interface ShellControls {
   leaveRoom(): Promise<{ ok: boolean; error?: string }>;
   resetNetwork(): Promise<{ ok: boolean; result?: unknown; error?: string }>;
   toggleOverlay(): Promise<{ on: boolean }>;
+  /** v11 A1 — OCR backup toggle (persisted; default OFF). */
+  setOcrSettings(next: { enabled?: boolean }): { enabled: boolean };
+  /** v11 C12 — build a support bundle and return its folder. */
+  createSupportBundle(): Promise<{ ok: boolean; dir?: string; error?: string }>;
 }
 
 export interface ShellStatus {
@@ -40,7 +44,23 @@ export interface ShellStatus {
   overlayRequested: boolean;
   runtimeConnected: boolean;
   /** A2: GEP telemetry-delivery state (additive) — e.g. HEALTHY / CONNECTED_BUT_NO_TELEMETRY. */
-  gepTelemetry: { state: string; at: number } | null;
+  gepTelemetry: { state: string; at: number; lastDataAt: number | null } | null;
+  /** v11 C11 — versions strip: what is running and when the game last changed. */
+  versions: {
+    app: string;
+    gepPackage: string | null;
+    gameBuildAt: number | null;
+    gameRecentlyUpdated: boolean;
+  };
+  /** v11 A — OCR backup state (default disabled). */
+  ocr: {
+    enabled: boolean;
+    engaged: boolean;
+    engineError: string | null;
+    lastReadAt: number | null;
+    hint: string | null;
+    score: { left: number; right: number } | null;
+  };
   live: {
     sessionPhase: string;
     mapName: string | null;
@@ -309,6 +329,27 @@ export class HudServer {
         .toggleOverlay()
         .then((r) => send(200, r))
         .catch((error) => send(502, { on: false, error: String(error) }));
+      return;
+    }
+    // v11 A1 — OCR backup toggle (persisted, default OFF).
+    if (controls && req.method === "POST" && url.pathname === "/api/ocr/settings") {
+      void this.readBody(req).then((body) => {
+        const next = body as { enabled?: unknown };
+        try {
+          const settings = controls.setOcrSettings({ enabled: next?.enabled === true });
+          send(200, { ok: true, settings });
+        } catch (error) {
+          send(500, { ok: false, error: String(error) });
+        }
+      });
+      return;
+    }
+    // v11 C12 — one-click support bundle (logs + state summary + provenance).
+    if (controls && req.method === "POST" && url.pathname === "/api/support-bundle") {
+      void controls
+        .createSupportBundle()
+        .then((r) => send(200, r))
+        .catch((error) => send(502, { ok: false, error: String(error) }));
       return;
     }
 

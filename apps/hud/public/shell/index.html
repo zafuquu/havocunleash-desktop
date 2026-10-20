@@ -12,6 +12,9 @@
       <p id="subtitle">Broadcast coordinator</p>
     </header>
 
+    <!-- v11 B7 — watchdog: loud when GEP delivers nothing mid-match -->
+    <div id="gep-banner" class="banner hidden"></div>
+
     <!-- 1) Login -->
     <section id="view-login" class="view hidden">
       <p class="muted">Sign in with Discord to link this desktop to your rooms.</p>
@@ -36,6 +39,18 @@
 
     <!-- 3) Connected -->
     <section id="view-connected" class="view hidden">
+      <!-- v11 U1 — first-run setup checklist (dismissible; all-green = ready) -->
+      <div id="setup" class="setup hidden">
+        <div class="setup-head"><b>Setup checklist</b><button id="setup-dismiss" class="btn small">Done</button></div>
+        <ul>
+          <li id="st-signin">Sign in with Discord</li>
+          <li id="st-room">Join a room</li>
+          <li id="st-runtime">Runtime connected</li>
+          <li id="st-gep">GEP data flowing</li>
+          <li id="st-overlay">Overlay started</li>
+        </ul>
+        <button id="btn-copy-obs" class="btn small">Copy OBS browser-source URL</button>
+      </div>
       <div class="row"><span class="muted">Room</span><b id="c-room">—</b></div>
       <div class="row"><span class="muted">Game</span><b id="c-live">waiting…</b></div>
       <div class="row"><span class="muted">Scene</span><b id="c-scene">—</b></div>
@@ -49,7 +64,26 @@
       <p class="muted small">The overlay attaches automatically once VALORANT is running.</p>
     </section>
 
-    <footer><span id="dot" class="dot"></span><span id="conn-text">runtime: idle</span></footer>
+    <!-- v11 C11 — one-line versions strip; chip click opens the U2 health drawer -->
+    <p id="versions" class="muted small versions">—</p>
+    <footer>
+      <button id="chip" class="chip" type="button" title="Health details">
+        <span id="dot" class="dot"></span><span id="conn-text">runtime: idle</span>
+        <span id="ocr-badge" class="ocr-badge hidden">OCR BACKUP</span>
+      </button>
+    </footer>
+    <div id="health-drawer" class="drawer hidden">
+      <div class="row"><span class="muted">GEP telemetry</span><b id="h-gep">—</b></div>
+      <div class="row"><span class="muted">Last game data</span><b id="h-lastdata">—</b></div>
+      <div class="row"><span class="muted">App / GEP package</span><b id="h-app">—</b></div>
+      <div class="row"><span class="muted">VALORANT build</span><b id="h-game">—</b></div>
+      <div class="row"><span class="muted">OCR backup</span><b id="h-ocr">—</b></div>
+      <label class="row toggle"><input id="ocr-enabled" type="checkbox" /><span>Enable OCR backup (scene; raw score read — default off)</span></label>
+      <div class="row-actions">
+        <button id="btn-support" class="btn small">Copy diagnostics</button>
+      </div>
+      <p id="h-support" class="muted small hidden"></p>
+    </div>
   </main>
   <script src="shell.js"></script>
 </body>

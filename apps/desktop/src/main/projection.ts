@@ -128,6 +128,9 @@ function pipelineLog(event: string, data: Record<string, unknown>): void {
   }
 }
 
+/** The overlay scenes deriveScene can name — shared by GEP evidence and the v11 OCR backup. */
+export type HudScene = "agent-select" | "buy-round" | "ingame-hud" | "post-game";
+
 interface WorkingState {
   revision: number;
   // Includes all upstream phases (unknown/pregame/ending) + fork (loading).
@@ -321,6 +324,10 @@ interface WorkingState {
     winner: "blue" | "red";
     reason: "elimination" | "detonation" | "defusion" | "time";
   }>;
+  /** v11 A4/A5 — OCR backup engagement: conservative scene hint ("hold" = keep current). */
+  ocrActive: boolean;
+  ocrAt: number | null;
+  ocrSceneHint: HudScene | "hold" | null;
 }
 
 function initial(): WorkingState {
@@ -376,6 +383,9 @@ function initial(): WorkingState {
     roundOutcome: null,
     lastSettledRound: 0,
     roundHistory: [],
+    ocrActive: false,
+    ocrAt: null,
+    ocrSceneHint: null,
   };
 }
 
@@ -446,7 +456,14 @@ export class ValProjectionSession {
   /** One-shot warning: a provider reporting extra board rows is visible, not silent. */
   private loggedRosterOverflow = false;
 
-  constructor() {
+  /**
+   * v11 B6 — minimum dwell (ms) before the EMITTED scene may change. With 0
+   * (every existing test/script) transitions stay immediate — the historical
+   * contract. Production passes 700: deriveScene re-runs on every build(), so
+   * fact bursts (provider re-arm, boundary timestamps crossing their windows)
+   * could flip buy-round ↔ ingame-hud within split seconds and flicker OBS.
+   */
+  constructor(private readonly sceneStabilizeMs = 0) {
     // Phase 2: the previous match's disk mirror is QUARANTINED, never applied.
     // A cold boot starts unknown â†’ idle and only live provider evidence may
     // establish a session. (Applying it made a finished board present itself as
@@ -457,6 +474,8 @@ export class ValProjectionSession {
 
   public reset(): void {
     this.s = initial();
+    this.sceneCommitted = undefined;
+    this.sceneCandidate = null;
     this.emitChange();
   }
 
@@ -991,6 +1010,29 @@ export class ValProjectionSession {
     this.writeAbilityState(pending);
   }
 
+
+  /**
+   * v11 A4 — OCR backup readings. `null` disengages (GEP recovered, toggle
+   * off); otherwise the conservative scene hint feeds deriveScene while fresh
+   * (<30s). Kept OUT of applyFact so the GEP fact dialects never see OCR
+   * payloads — this is a source-marker path, matching the runtime's
+   * `havoc_data_source` separation.
+   */
+  public applyOcrReading(reading: { hint: HudScene | "hold"; at?: number } | null): void {
+    const s = this.s;
+    if (reading === null) {
+      if (!s.ocrActive && s.ocrSceneHint === null) return;
+      s.ocrActive = false;
+      s.ocrSceneHint = null;
+      s.ocrAt = null;
+      this.emitChange();
+      return;
+    }
+    s.ocrActive = true;
+    s.ocrSceneHint = reading.hint;
+    s.ocrAt = reading.at ?? Date.now();
+    this.emitChange();
+  }
 
   public applyFact(key: string, rawValue: unknown): void {
     const s = this.s;
@@ -2884,7 +2926,7 @@ export class ValProjectionSession {
       // is the contract that makes the invariant checkable (and it is what the
       // buy scene keys on).
       gameEventRound: this.liveGameEventRound(),
-      scene: this.deriveScene(),
+      scene: this.stabilizeScene(this.deriveScene()),
       timeout: s.timeout,
       roundEnd: s.roundEnd,
       roundHistory: s.roundHistory,
@@ -3022,11 +3064,48 @@ export class ValProjectionSession {
     return best;
   }
 
+  /** v11 B6 — stabilization state for the emitted scene (see stabilizeScene). */
+  private sceneCommitted: HudScene | null | undefined = undefined;
+  private sceneCandidate: HudScene | null = null;
+  private sceneCandidateAt = 0;
+
+  /**
+   * v11 B6 — scene hysteresis. A candidate must persist across consecutive
+   * builds for `sceneStabilizeMs` before it is committed; until then the
+   * previously committed scene keeps publishing. Kills the split-second
+   * buy-round ↔ ingame-hud flicker (fact bursts re-ran deriveScene's
+   * time-window branches every frame) while real transitions still land —
+   * 700ms later. 0ms = pass-through (tests, scripts).
+   */
+  private stabilizeScene(candidate: HudScene | null): HudScene | null {
+    if (this.sceneStabilizeMs <= 0) return candidate;
+    if (this.sceneCommitted === undefined) {
+      this.sceneCommitted = candidate;
+      return candidate;
+    }
+    if (candidate === this.sceneCommitted) {
+      this.sceneCandidate = null;
+      return candidate;
+    }
+    const now = Date.now();
+    if (candidate !== this.sceneCandidate) {
+      this.sceneCandidate = candidate;
+      this.sceneCandidateAt = now;
+      return this.sceneCommitted;
+    }
+    if (now - this.sceneCandidateAt >= this.sceneStabilizeMs) {
+      this.sceneCommitted = candidate;
+      this.sceneCandidate = null;
+      return candidate;
+    }
+    return this.sceneCommitted;
+  }
+
   /**
    * The overlay scene the current game data implies. The website popout uses
    * this to switch scenes automatically; null keeps the URL-picked scene.
    */
-  private deriveScene(): "agent-select" | "buy-round" | "ingame-hud" | "post-game" | null {
+  private deriveScene(): HudScene | null {
     const s = this.s;
     // Restored-from-cache data is unconfirmed: no scene until the runtime
     // streams fresh evidence (prevents a stale previous match presenting as
@@ -3046,6 +3125,17 @@ export class ValProjectionSession {
     // Post Game and drop the popout back to the HUD scene. Post Game stays
     // until a genuine new match resets matchWinner (or a production reset).
     if (s.matchWinner) return "post-game";
+    // v11 A4/A5 — OCR backup engaged (GEP telemetry dead mid-match): its
+    // conservative scene hint outranks the evidence-starved fallbacks below,
+    // which fabricated "buy-round" from match identity alone on 2026-10-20.
+    // The authoritative latches ABOVE still win (fresh pregame, settled match);
+    // "hold" keeps the committed scene — v1 OCR rules never guess through
+    // uncertainty (LOCK IN → agent-select, VICTORY/DEFEAT → post-game,
+    // top-timer → in-match but buy-vs-hud unproven → hold).
+    if (s.ocrActive && s.ocrSceneHint !== null && s.ocrAt !== null && Date.now() - s.ocrAt < 30_000) {
+      if (s.ocrSceneHint === "hold") return this.sceneCommitted ?? null;
+      return s.ocrSceneHint;
+    }
     if (s.sessionPhase === "idle") return null;
     // A KNOWN round phase is live-match evidence on its own: `round_phase` is
     // only ever emitted by a running game, so a session phase that never got

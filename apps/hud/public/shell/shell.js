@@ -6,6 +6,9 @@ const show = (id) => {
 };
 
 let overlayOn = false;
+/** v11: watchdog banner dismissal (re-arms on recovery) + health drawer. */
+let bannerDismissed = false;
+let drawerOpen = false;
 
 async function post(path, body) {
   const res = await fetch(path, {
@@ -43,6 +46,27 @@ async function refresh() {
         : "runtime: connected";
   $("conn-text").classList.toggle("gepdead", gepDead);
 
+  // v11 C11 — versions strip + data age; B7 — watchdog banner; A — OCR badge.
+  const lastDataMs = s.gepTelemetry?.lastDataAt ?? s.gepTelemetry?.at ?? 0;
+  const dataAgeS = lastDataMs > 0 ? Math.max(0, Math.round((Date.now() - lastDataMs) / 1000)) : null;
+  const v = s.versions ?? {};
+  $("versions").textContent =
+    `app ${v.app ?? "—"} · GEP pkg ${v.gepPackage ?? "?"} · VAL ${
+      v.gameBuildAt ? new Date(v.gameBuildAt).toLocaleDateString() : "?"
+    } · data ${dataAgeS === null ? "—" : dataAgeS + "s"}` + (v.gameRecentlyUpdated ? " · ⚠ game updated" : "");
+  const banner = $("gep-banner");
+  const watch = inMatch && gepDead && dataAgeS !== null && dataAgeS > 180;
+  if (watch && !bannerDismissed) {
+    banner.textContent =
+      `No GEP game data for ${Math.floor(dataAgeS / 60)}m ${dataAgeS % 60}s while live — a VALORANT patch may have broken telemetry until Overwolf ships a fix.` +
+      (s.ocr?.engaged ? " OCR backup is covering the scene." : s.ocr?.enabled ? "" : " Tip: enable OCR backup in health details (chip).");
+    banner.classList.remove("hidden");
+  } else if (!watch) {
+    banner.classList.add("hidden");
+    bannerDismissed = false; // recovery re-arms the banner
+  }
+  $("ocr-badge").classList.toggle("hidden", !(s.ocr && s.ocr.engaged));
+
   if (!s.signedIn) {
     show("view-login");
     return;
@@ -55,6 +79,8 @@ async function refresh() {
   }
 
   show("view-connected");
+  renderSetup(s);
+  renderHealth(s, dataAgeS);
   $("subtitle").textContent = `Signed in as ${s.userName ?? "user"}`;
   $("c-room").textContent = s.room.roomName || s.room.roomId.slice(0, 8);
   overlayOn = !!s.overlayRequested;
@@ -164,6 +190,106 @@ $("btn-overlay").addEventListener("click", async () => {
 new MutationObserver(() => {
   if (!$("view-room").classList.contains("hidden")) void loadRooms();
 }).observe($("view-room"), { attributes: true, attributeFilter: ["class"] });
+
+/* ------------------------- v11 shell: health drawer / setup / OCR ------------------------- */
+
+function renderHealth(s, dataAgeS) {
+  if (!drawerOpen) return;
+  const tel = s.gepTelemetry?.state ?? "—";
+  $("h-gep").textContent = tel + (s.ocr?.engaged ? " · OCR covering" : "");
+  $("h-lastdata").textContent = dataAgeS === null ? "—" : `${dataAgeS}s ago`;
+  const v = s.versions ?? {};
+  $("h-app").textContent = `${v.app ?? "—"} / ${v.gepPackage ?? "?"}`;
+  $("h-game").textContent = v.gameBuildAt
+    ? `${new Date(v.gameBuildAt).toLocaleString()}${v.gameRecentlyUpdated ? " — updated recently" : ""}`
+    : "?";
+  const o = s.ocr ?? {};
+  $("h-ocr").textContent = !o.enabled
+    ? "off"
+    : o.engineError
+      ? `error: ${o.engineError}`
+      : o.engaged
+        ? `engaged${o.lastReadAt ? ` · read ${Math.max(0, Math.round((Date.now() - o.lastReadAt) / 1000))}s ago` : ""}${
+            o.score ? ` · raw L${o.score.left} R${o.score.right}` : ""
+          }`
+        : "on (waiting for GEP to go stale)";
+  const box = $("ocr-enabled");
+  if (document.activeElement !== box) box.checked = o.enabled === true;
+}
+
+function setupDone() {
+  try {
+    return localStorage.getItem("hu_setup_done") === "1";
+  } catch {
+    return true;
+  }
+}
+
+function renderSetup(s) {
+  const card = $("setup");
+  if (setupDone()) {
+    card.classList.add("hidden");
+    return;
+  }
+  card.classList.remove("hidden");
+  const set = (id, ok) => {
+    const el = $(id);
+    el.classList.toggle("ok", !!ok);
+    el.classList.toggle("bad", !ok);
+  };
+  set("st-signin", s.signedIn);
+  set("st-room", !!s.room);
+  set("st-runtime", s.runtimeConnected);
+  set("st-gep", s.gepTelemetry?.state === "HEALTHY");
+  set("st-overlay", s.overlayRequested);
+}
+
+$("chip").addEventListener("click", () => {
+  drawerOpen = !drawerOpen;
+  $("health-drawer").classList.toggle("hidden", !drawerOpen);
+  void refresh();
+});
+
+$("gep-banner").addEventListener("click", () => {
+  bannerDismissed = true;
+  $("gep-banner").classList.add("hidden");
+});
+
+$("ocr-enabled").addEventListener("change", async (e) => {
+  await post("/api/ocr/settings", { enabled: e.target.checked === true });
+  void refresh();
+});
+
+$("btn-support").addEventListener("click", async () => {
+  const p = $("h-support");
+  p.classList.remove("hidden");
+  p.textContent = "Building bundle…";
+  try {
+    const r = await post("/api/support-bundle");
+    p.textContent = r.ok ? `Bundle ready: ${r.dir ?? "folder opened"}` : `Failed: ${r.error ?? "unknown error"}`;
+  } catch (error) {
+    p.textContent = `Failed: ${error}`;
+  }
+});
+
+$("setup-dismiss").addEventListener("click", () => {
+  try {
+    localStorage.setItem("hu_setup_done", "1");
+  } catch {
+    /* private mode */
+  }
+  $("setup").classList.add("hidden");
+});
+
+$("btn-copy-obs").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(`${location.origin}/`);
+    $("btn-copy-obs").textContent = "Copied!";
+    setTimeout(() => ($("btn-copy-obs").textContent = "Copy OBS browser-source URL"), 1500);
+  } catch {
+    $("btn-copy-obs").textContent = "Copy failed — copy the address bar URL";
+  }
+});
 
 void refresh();
 setInterval(refresh, 1500);

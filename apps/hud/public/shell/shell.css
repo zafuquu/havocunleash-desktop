@@ -50,6 +50,60 @@ footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid rgba(255,255
 .dot.live { background: #ffb02e; }
 .dot.gepdead { background: #ff5f56; }
 #conn-text.gepdead { color: #ff7b6f; }
+
+/* ---------------- v11 shell: versions strip, drawer, banner, setup ---------------- */
+.versions { margin-top: 10px; text-align: center; opacity: 0.75; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: 0;
+  padding: 4px 6px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.banner {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid #7a2e28;
+  background: #2a1512;
+  color: #ff9a90;
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+.drawer { margin-top: 8px; border-top: 1px solid #26282c; padding-top: 6px; }
+.drawer .row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 12.5px; }
+.drawer .toggle { cursor: pointer; }
+.drawer .toggle span { flex: 1; text-align: left; font-weight: 400; color: #b6bbc2; }
+.ocr-badge {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #3a2c12;
+  color: #ffb02e;
+  border: 1px solid #6b5418;
+}
+.setup {
+  border: 1px solid #26282c;
+  background: #191b1e;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+}
+.setup-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.setup ul { list-style: none; margin: 0 0 6px; padding: 0; }
+.setup li { padding: 2px 0; color: #9aa0a6; }
+.setup li::before { content: "○ "; }
+.setup li.ok { color: #34c77b; }
+.setup li.ok::before { content: "● "; }
+.setup li.bad { color: #ff7b6f; }
+.setup li.bad::before { content: "✕ "; }
 .row-actions { display: flex; gap: 10px; margin-top: 10px; }
 .row-actions .btn { flex: 1; margin-top: 0; }
 .btn.danger { background: #3a1c1c; border-color: #7a3a3a; color: #ff9b8f; }

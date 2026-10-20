@@ -116,6 +116,14 @@ export interface EnsureGepOptions {
   extractTarImpl?: (archive: string, destDir: string) => Promise<void>;
 }
 
+/** Boot options (D15): cache-first boot + background update task. */
+export interface BootGepOptions extends EnsureGepOptions {
+  /** Check the manifest for updates in the BACKGROUND (default true). */
+  backgroundUpdate?: boolean;
+  /** Test seam / observability hook for the background update task. */
+  backgroundUpdateImpl?: (dataDir: string, opts: EnsureGepOptions) => Promise<GepPackageInfo | null>;
+}
+
 /**
  * Numeric-aware dotted-version compare. Lexicographic/`localeCompare` sorts
  * rank "315.3.5" above "315.3.10" ("5" > "1") — every version-selection site
@@ -260,6 +268,72 @@ export async function ensureGepPackage(
   throw manifestError instanceof Error
     ? manifestError
     : new Error("GEP package manifest unavailable and no cached package is usable");
+}
+
+/**
+ * v11 D15 — cache-first boot with a BACKGROUND update check.
+ *
+ * v10 checked the manifest synchronously on every launch (up to 8s when
+ * offline) before the provider could start. Boot now validates the cache
+ * (fast, local) and returns immediately; `backgroundGepUpdate` then fetches
+ * the manifest and stages any newer package for the NEXT launch. The
+ * patch-day guarantee is preserved — a corrective Overwolf package is still
+ * downloaded automatically — just applied one launch later, which is fine
+ * because an injection fix requires a game/provider restart anyway.
+ *
+ * When no valid cache exists there is nothing to boot from: falls through to
+ * the full synchronous `ensureGepPackage` (which downloads).
+ */
+export async function bootGepPackage(
+  dataDir = resolveGameDataDir(),
+  opts: BootGepOptions = {},
+): Promise<GepPackageInfo> {
+  const trackDir = join(dataDir, "packages", "gep");
+  for (const version of listCachedVersions(trackDir)) {
+    const extractedDir = join(trackDir, version, "extracted");
+    try {
+      if (verifyContents(extractedDir).length === 0) {
+        rmSync(join(trackDir, version, "module.owepk"), { force: true });
+        writeResolved(join(trackDir, version), version);
+        // Single-version cache, pruned BEFORE the background task starts so
+        // it can never race a download of the version we are about to use.
+        pruneOtherVersions(trackDir, version);
+        if (opts.backgroundUpdate !== false) {
+          const run = opts.backgroundUpdateImpl ?? backgroundGepUpdate;
+          void run(dataDir, opts).catch(() => {
+            /* background update is strictly best-effort */
+          });
+        }
+        return { version, directory: extractedDir };
+      }
+    } catch {
+      // unreadable/corrupt extraction -> try the next-oldest cached version
+    }
+  }
+  return ensureGepPackage(dataDir, opts);
+}
+
+/**
+ * Background manifest check (D15): download + verify a newer package so the
+ * NEXT boot finds it as the newest valid cache. Never prunes (the booted
+ * extraction may be in use), never throws — returns null when there is
+ * nothing to do or the check fails.
+ */
+export async function backgroundGepUpdate(
+  dataDir: string,
+  opts: EnsureGepOptions = {},
+): Promise<GepPackageInfo | null> {
+  const trackDir = join(dataDir, "packages", "gep");
+  const fetchJson = opts.fetchJsonImpl ?? fetchJsonDefault;
+  const downloadTo = opts.downloadToImpl ?? downloadToDefault;
+  const extractTar = opts.extractTarImpl ?? extractTarDefault;
+  try {
+    const latest = pickGepPackage(await fetchJson(MANIFEST_URL, UPDATE_CHECK_TIMEOUT_MS));
+    if (listCachedVersions(trackDir).includes(latest.version)) return null;
+    return await downloadExtractVerify(trackDir, latest.url, latest.version, { downloadTo, extractTar });
+  } catch {
+    return null;
+  }
 }
 
 function writeResolved(versionDir: string, version: string): void {

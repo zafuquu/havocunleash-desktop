@@ -24,7 +24,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 
 import { formatKill, formatMap, formatMapKey, formatPlayer, formatRoster } from "./gep-format";
-import { deriveAppUid, ensureGepPackage, resolveGameDataDir } from "./gep-download";
+import { bootGepPackage, backgroundGepUpdate, deriveAppUid, resolveGameDataDir } from "./gep-download";
 import {
   findOverwolfProcesses,
   MONITOR_CONFLICT_ERROR,
@@ -540,7 +540,15 @@ export class GepProviderSource {
   private async prepareAndLaunch(exe: string, providerDir: string): Promise<void> {
     let gepDir: string;
     try {
-      const info = await ensureGepPackage();
+      // v11 D15: cache-first boot (no manifest wait) — the manifest check runs
+      // in the background and stages any newer package for the NEXT launch.
+      const info = await bootGepPackage(undefined, {
+        backgroundUpdateImpl: async (dir, opts) => {
+          const updated = await backgroundGepUpdate(dir, opts);
+          if (updated) this.emitProviderStatus("gep_package_updated", { version: updated.version });
+          return updated;
+        },
+      });
       gepDir = info.directory;
       this.providerVersion = info.version;
     } catch (error) {

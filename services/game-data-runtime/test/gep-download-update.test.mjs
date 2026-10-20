@@ -17,7 +17,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { compareGepVersions, ensureGepPackage } from "../dist/gep-download.js";
+import { bootGepPackage, backgroundGepUpdate, compareGepVersions, ensureGepPackage } from "../dist/gep-download.js";
 
 function makeDataDir() {
   return mkdtempSync(join(tmpdir(), "havoc-gep-dl-"));
@@ -118,4 +118,86 @@ test("no cache and manifest failure — rejects (same contract as before)", asyn
     ensureGepPackage(dir, { fetchJsonImpl: () => Promise.reject(new Error("offline")) }),
     /offline/,
   );
+});
+
+/* ------------------------- v11 D15: cache-first boot ------------------------- */
+
+test("boot — valid cache returns WITHOUT consulting the manifest (no boot-time network)", async () => {
+  const dir = makeDataDir();
+  seedCached(dir, "315.3.6");
+  let manifestCalls = 0;
+  let backgroundCalls = 0;
+  const info = await bootGepPackage(dir, {
+    fetchJsonImpl: () => {
+      manifestCalls += 1;
+      return Promise.reject(new Error("must not be called on the boot path"));
+    },
+    backgroundUpdateImpl: () => {
+      backgroundCalls += 1;
+      return Promise.resolve(null);
+    },
+  });
+  assert.equal(info.version, "315.3.6");
+  assert.equal(manifestCalls, 0, "boot itself never touches the network");
+  assert.equal(backgroundCalls, 1, "the background update task is scheduled exactly once");
+});
+
+test("boot — backgroundUpdate:false skips the background task entirely", async () => {
+  const dir = makeDataDir();
+  seedCached(dir, "315.3.6");
+  let backgroundCalls = 0;
+  const info = await bootGepPackage(dir, {
+    backgroundUpdate: false,
+    backgroundUpdateImpl: () => {
+      backgroundCalls += 1;
+      return Promise.resolve(null);
+    },
+  });
+  assert.equal(info.version, "315.3.6");
+  assert.equal(backgroundCalls, 0);
+});
+
+test("boot — no cache falls through to the synchronous full path", async () => {
+  const dir = makeDataDir();
+  await assert.rejects(
+    bootGepPackage(dir, { fetchJsonImpl: () => Promise.reject(new Error("offline")) }),
+    /offline/,
+    "an empty cache must still be able to download synchronously",
+  );
+});
+
+test("background update — stages a newer package for the NEXT boot, booted version untouched", async () => {
+  const dir = makeDataDir();
+  seedCached(dir, "315.3.5");
+  // Boot on the old cache…
+  const first = await bootGepPackage(dir, { backgroundUpdate: false });
+  assert.equal(first.version, "315.3.5");
+  // …while the background task picks up the corrective package.
+  const updated = await backgroundGepUpdate(dir, {
+    fetchJsonImpl: () => Promise.resolve(manifestFor("315.3.6")),
+    downloadToImpl: (url, dest) => {
+      writeFileSync(dest, "archive-stub");
+      return Promise.resolve();
+    },
+    extractTarImpl: extractStub,
+  });
+  assert.ok(updated, "the background update reports what it staged");
+  assert.equal(updated.version, "315.3.6");
+  assert.ok(
+    existsSync(join(dir, "packages", "gep", "315.3.5", "extracted", "ow-electron-gep-plugin.node")),
+    "the in-use extraction must NOT be pruned by the background task",
+  );
+  // Next boot: the staged version wins (numeric) and prunes the old one.
+  const second = await bootGepPackage(dir, { backgroundUpdate: false });
+  assert.equal(second.version, "315.3.6");
+  assert.ok(!existsSync(join(dir, "packages", "gep", "315.3.5")), "old version pruned at the next boot");
+});
+
+test("background update — manifest failure or no-op returns null without throwing", async () => {
+  const dir = makeDataDir();
+  seedCached(dir, "315.3.6");
+  const fail = await backgroundGepUpdate(dir, { fetchJsonImpl: () => Promise.reject(new Error("offline")) });
+  assert.equal(fail, null);
+  const noop = await backgroundGepUpdate(dir, { fetchJsonImpl: () => Promise.resolve(manifestFor("315.3.6")) });
+  assert.equal(noop, null, "already-current package -> nothing to stage");
 });

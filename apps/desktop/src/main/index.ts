@@ -5,7 +5,7 @@
  *   producer ticket -> Socket.IO claim -> publish game snapshots to the
  *   bridge -> website reads Supabase + overlay popout windows.
  */
-import { app, BrowserWindow, ipcMain, safeStorage } from "electron";
+import { app, BrowserWindow, ipcMain, safeStorage, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -32,6 +32,8 @@ import { getBuildInfo } from "./buildInfo";
 import { createSupportBundle } from "./supportBundle";
 import { toGameSnapshot } from "./snapshot";
 import { selectDataSource } from "./dataSource";
+import { detectValorantBuild, isGameRecentlyUpdated, type ValorantBuildInfo } from "./gameBuild";
+import { OcrBackupController } from "./ocrSource";
 import { deriveBridgeEvents, initialBridgeEventState } from "./gameEvents";
 
 let cfg: AppConfig;
@@ -319,6 +321,13 @@ function queuePublish(): void {
 /** A2: latest GEP telemetry-delivery state (from provider_status facts, additive). */
 let gepTelemetryState: string | null = null;
 let gepTelemetryStateAt = 0;
+/** v11 C11: lastGameDataAt from the telemetry fact payload (data freshness). */
+let gepTelemetryLastDataAt: number | null = null;
+/** v11 C11: GEP package version (runtime /health poll) + game build stamp (B8). */
+let gepPackageVersion: string | null = null;
+let gameBuildInfo: ValorantBuildInfo | null = null;
+/** v11 A: OCR backup controller (created in boot()). */
+let ocrController: OcrBackupController | null = null;
 
 /** Tracks which projection changes were already surfaced as game-event frames. */
 let lastEventState = initialBridgeEventState();
@@ -435,7 +444,32 @@ const shellControls: ShellControls = {
       overlayRequested,
       runtimeConnected: snap?.connectedToRuntime ?? false,
       gepTelemetry:
-        gepTelemetryState !== null ? { state: gepTelemetryState, at: gepTelemetryStateAt } : null,
+        gepTelemetryState !== null
+          ? {
+              state: gepTelemetryState,
+              at: gepTelemetryStateAt,
+              lastDataAt: gepTelemetryLastDataAt,
+            }
+          : null,
+      versions: {
+        app: app.getVersion(),
+        gepPackage: gepPackageVersion,
+        gameBuildAt: gameBuildInfo?.builtAt ?? null,
+        gameRecentlyUpdated: isGameRecentlyUpdated(gameBuildInfo),
+      },
+      ocr: (() => {
+        const st = ocrController?.status();
+        return st
+          ? {
+              enabled: st.enabled,
+              engaged: st.engaged,
+              engineError: st.engineError,
+              lastReadAt: st.lastReadAt,
+              hint: st.hint,
+              score: st.score,
+            }
+          : { enabled: false, engaged: false, engineError: null, lastReadAt: null, hint: null, score: null };
+      })(),
       live: snap
         ? {
             sessionPhase: snap.sessionPhase,
@@ -545,6 +579,33 @@ const shellControls: ShellControls = {
     }
     logger.info("overlay", "toggled", { on: overlayRequested });
     return { on: overlayRequested };
+  },
+  setOcrSettings(next) {
+    // v11 A1 — persisted toggle; the controller is absent in headless tests.
+    if (!ocrController) return { enabled: false };
+    return ocrController.setSettings(next);
+  },
+  async createSupportBundle() {
+    // v11 C12 — one click in the shell health drawer; folder opens on success.
+    try {
+      const dir = path.join(app.getPath("documents"), "havoc-support");
+      const result = createSupportBundle({ outDir: dir, buildInfo: getBuildInfo() });
+      logger.info("app", "support_bundle", {
+        ok: result.ok,
+        bundleDir: result.bundleDir ?? null,
+        error: result.error ?? null,
+      });
+      if (result.ok) void shell.openPath(result.bundleDir ?? dir);
+      return {
+        ok: result.ok === true,
+        dir: result.bundleDir ?? undefined,
+        error: result.error ?? undefined,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error("app", "support_bundle_failed", { error: message });
+      return { ok: false, error: message };
+    }
   },
 };
 
@@ -672,7 +733,8 @@ async function boot(): Promise<void> {
   cfg = loadConfig();
   logger.info("app", "bootstrap_started", { win32Bridge: isWin32BridgeAvailable() });
 
-  projection = new ValProjectionSession();
+  // v11 B6: 700ms scene dwell in production (0 in tests = immediate transitions).
+  projection = new ValProjectionSession(700);
   hudServer = new HudServer(
     cfg.hudPort,
     hudPublicDir(),
@@ -701,10 +763,14 @@ async function boot(): Promise<void> {
           | { key?: unknown; value?: { state?: unknown } | null }
           | null;
         if (rec?.key === "provider_telemetry_state") {
-          const state = (rec.value as { state?: unknown } | null)?.state;
+          const payload = rec.value as { state?: unknown; lastGameDataAt?: unknown } | null;
+          const state = payload?.state;
           if (typeof state === "string") {
             gepTelemetryState = state;
             gepTelemetryStateAt = Date.now();
+            const lastDataAt = payload?.lastGameDataAt;
+            gepTelemetryLastDataAt =
+              typeof lastDataAt === "number" && lastDataAt > 0 ? lastDataAt : null;
           }
         }
       }
@@ -762,6 +828,39 @@ async function boot(): Promise<void> {
   setInterval(followGameWindow, FOLLOW_INTERVAL_MS);
   void client!.start();
 
+  // v11 A: OCR backup controller — OFF by default; only CAPTURES while engaged
+  // (toggle on + GEP telemetry bad + a session exists; see ocrRules.ts).
+  ocrController = new OcrBackupController({
+    scriptPath: app.isPackaged
+      ? path.join(process.resourcesPath, "ocr", "ocr-bridge.ps1")
+      : path.join(app.getAppPath(), "resources", "ocr-bridge.ps1"),
+    settingsFile: path.join(app.getPath("userData"), "ocr-settings.json"),
+    projection: projection!,
+    getContext: () => ({
+      telemetryState: gepTelemetryState,
+      telemetryChangedAt: gepTelemetryStateAt,
+      sessionPhase: projection?.snapshotValue().sessionPhase ?? "idle",
+    }),
+  });
+  ocrController.start();
+  // v11 C11/B8: runtime /health poll (GEP package version) + VALORANT build
+  // stamp for the shell versions strip; refreshed every 5 minutes (patch lands
+  // while the app runs).
+  const refreshVersions = async (): Promise<void> => {
+    try {
+      const res = await fetch(`${cfg.runtimeOrigin}/health`, { signal: AbortSignal.timeout(5_000) });
+      const body = (await res.json()) as { capabilities?: { overwolf?: { providerVersion?: unknown } } };
+      const v = body.capabilities?.overwolf?.providerVersion;
+      gepPackageVersion = typeof v === "string" && v.length > 0 ? v : null;
+    } catch {
+      /* runtime down/restarting — keep the last known value */
+    }
+    gameBuildInfo = detectValorantBuild();
+  };
+  void refreshVersions();
+  const versionsTimer = setInterval(() => void refreshVersions(), 5 * 60_000);
+  versionsTimer.unref?.();
+
   auth = new DesktopAuth(cfg.appBase, cfg.bridgeOrigin, cfg.desktopProtocol, createSessionStore());
   app.on("second-instance", (_event, argv) => {
     const link = extractDeepLink(argv, cfg.desktopProtocols);
@@ -809,6 +908,8 @@ app.on("before-quit", () => {
   client?.stop();
   runtimeChild?.kill();
   void producer?.stop();
+  // v11 A — tear down the OCR capture loop + bridge worker with the app.
+  ocrController?.stop();
 });
 
 app.on("window-all-closed", () => {
