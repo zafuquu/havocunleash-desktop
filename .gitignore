@@ -5,6 +5,8 @@ node_modules/
 dist/
 release/
 release-fresh/
+# versioned pack output (release-v1, release-v2, ...) — build artifacts
+release-v*/
 *.asar
 
 # Logs

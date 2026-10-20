@@ -25,6 +25,28 @@ const ROUND_DURATION_SECONDS: Record<string, number> = {
   end: 7,
 };
 
+/**
+ * Tactical-timeout detection (BLOB parity).
+ *
+ * BLOB watched the game's NATIVE round clock and flagged it frozen for
+ * VALORANT_TIMER_FREEZE_MS (3s) as timeout evidence (val-timer-pause.contract).
+ * GEP gives us only the phase fact, so the equivalent evidence is the BUY
+ * phase persisting past every normal shopping window (45s standard buy;
+ * 60-75s round-1/half-time buys -> 75s grace). Round >= 2 is guarded
+ * separately (round-1 buys run ~100s). GEP never attributes the CALLING team
+ * — the original desktop shipped no team either — so `team` stays null and
+ * the overlay renders a neutral banner.
+ */
+const TIMEOUT_DETECT_MS = 75_000;
+/** The site auto-hides a tactical timeout at calledAt+60s; clear just after. */
+const TIMEOUT_MAX_MS = 60_000 + 5_000;
+
+export interface ValEngineTimeoutState {
+  team: "left" | "right" | null;
+  calledAt: number;
+  timeoutType: "tactical" | "tech_pause";
+}
+
 interface EnginePlayer {
   playerId: string;
   name: string;
@@ -66,6 +88,8 @@ export interface ValRoundEngineSnapshot {
   roundPhase: string | null;
   score: { team_0: number; team_1: number };
   roundClockSeconds: number;
+  /** Active tactical timeout (BLOB timeoutStarted parity), else null. */
+  timeout: ValEngineTimeoutState | null;
   attackForRound: "team_0" | "team_1";
   rounds: Array<{
     roundNumber: number;
@@ -86,6 +110,8 @@ export class ValRoundEngine {
   private score: { team_0: number; team_1: number } = { team_0: 0, team_1: 0 };
   private players = new Map<string, EnginePlayer>();
   private lastClockSeconds = 0;
+  private phaseEnteredAtMs = 0;
+  private timeoutState: ValEngineTimeoutState | null = null;
 
   public constructor(private readonly onSettled?: (result: ValNativeRoundSettlement) => void) {
     this.clock = new ValRoundClock(projectionTime, (seconds) => {
@@ -106,6 +132,8 @@ export class ValRoundEngine {
     this.history.reset();
     this.settlement.reset();
     this.clock.stop();
+    this.phaseEnteredAtMs = 0;
+    this.timeoutState = null;
   }
 
   public onRoundNumber(roundNumber: number): void {
@@ -117,6 +145,11 @@ export class ValRoundEngine {
   }
 
   public onRoundPhase(phase: string): void {
+    if (phase !== this.roundPhase) {
+      this.phaseEnteredAtMs = Date.now();
+      // Any phase transition ends a tactical timeout — the buy timer resumed.
+      this.timeoutState = null;
+    }
     this.roundPhase = phase;
     const duration = ROUND_DURATION_SECONDS[phase];
     if (duration) this.clock.start(duration, phase as ValorantRawRoundPhase);
@@ -209,6 +242,19 @@ export class ValRoundEngine {
   }
 
   public snapshot(): ValRoundEngineSnapshot {
+    const now = Date.now();
+    if (
+      this.roundPhase === "shopping" &&
+      this.roundNumber >= 2 &&
+      this.timeoutState === null &&
+      this.phaseEnteredAtMs > 0 &&
+      now - this.phaseEnteredAtMs > TIMEOUT_DETECT_MS
+    ) {
+      this.timeoutState = { team: null, calledAt: now, timeoutType: "tactical" };
+    }
+    if (this.timeoutState !== null && now - this.timeoutState.calledAt > TIMEOUT_MAX_MS) {
+      this.timeoutState = null;
+    }
     const rounds = [...this.history.entries().entries()]
       .sort(([a], [b]) => a - b)
       .map(([roundNumber, entry]) => ({
@@ -223,6 +269,7 @@ export class ValRoundEngine {
       roundPhase: this.roundPhase,
       score: { ...this.score },
       roundClockSeconds: this.lastClockSeconds,
+      timeout: this.timeoutState,
       attackForRound: valorantAttackerForRound(Math.max(1, this.roundNumber)),
       rounds,
     };

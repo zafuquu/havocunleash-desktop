@@ -24,7 +24,7 @@ import { MockValorantSource, ROSTER } from "./mock-source";
 import { GepProviderSource } from "./gep-capture";
 import { SpectraSource } from "./spectra-source";
 import { RiotIdentitySource } from "./riot-identity";
-import { ValRoundEngine, type ValNativeRoundSettlement } from "./val-engine";
+import { ValRoundEngine, type ValEngineTimeoutState, type ValNativeRoundSettlement } from "./val-engine";
 import { checkValorantProcess, getValorantProcessId } from "./valorant-detect";
 
 const PORT = Number(process.env.PORT ?? 7423);
@@ -173,6 +173,8 @@ class RuntimeHub {
   private detectorTimer: NodeJS.Timeout | null = null;
   private readonly identity = new RiotIdentitySource((fact) => this.acceptFact(fact));
   private readonly engine = new ValRoundEngine((result) => this.broadcastRoundSettled(result));
+  /** Last published timeout active flag — facts fire only on transitions. */
+  private lastTimeoutActive = false;
   private priorityBoosted = false;
   /** Real players reported by GEP (never faked). */
   private readonly players = new Map<string, RealPlayer>();
@@ -615,6 +617,9 @@ class RuntimeHub {
       }
     }
 
+    const valState = this.engine.snapshot();
+    this.maybeBroadcastTimeoutChanged(valState.timeout);
+
     return {
       at: new Date().toISOString(),
       id: this.nextFrameId++,
@@ -638,9 +643,32 @@ class RuntimeHub {
         score: this.score,
         killfeed: [...this.killfeed],
         teams,
-        valState: this.engine.snapshot(),
+        valState,
       },
     };
+  }
+
+  /** Timeout transitions ride the fact stream (BLOB timeoutStarted parity). */
+  private maybeBroadcastTimeoutChanged(timeout: ValEngineTimeoutState | null): void {
+    const active = timeout !== null;
+    if (active === this.lastTimeoutActive) return;
+    this.lastTimeoutActive = active;
+    this.broadcast("", {
+      at: new Date().toISOString(),
+      id: this.nextFrameId++,
+      protocolVersion: GAME_DATA_PROTOCOL_VERSION,
+      kind: "new_game_event",
+      data: {
+        gameId: 21640,
+        key: "timeout_changed",
+        value: {
+          active,
+          calledAt: timeout?.calledAt ?? null,
+          timeoutType: timeout?.timeoutType ?? null,
+          team: timeout?.team ?? null,
+        },
+      },
+    });
   }
 
   subscribe(res: http.ServerResponse): number {

@@ -185,12 +185,15 @@ export class HudServer {
 
   /** Broadcast-snapshot push: revisioned GameSnapshot frames for ?local=1 overlays. */
   public publishBroadcast(snapshot: unknown): void {
-    const state = (snapshot as { state?: { observedAt?: number } } | null)?.state;
+    const state = (snapshot as { state?: { observedAt?: number; timeout?: unknown } } | null)?.state;
     this.lastBroadcast = {
       kind: "broadcast",
       revision: (this.lastState?.revision as number) ?? 0,
       observedAt: state?.observedAt ?? Date.now(),
       snapshot,
+      // Tactical timeout / tech pause (BLOB parity): the website's TimeoutOverlay
+      // reads frame.timeout = {team, calledAt, timeoutType} (null when idle).
+      timeout: state?.timeout ?? null,
     };
     this.scheduleBroadcastPersist();
     const payload = JSON.stringify(this.lastBroadcast);

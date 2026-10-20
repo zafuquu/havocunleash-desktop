@@ -129,6 +129,8 @@ export interface GameSnapshot {
     observedAt?: number;
     /** How the last round ended (winner + reason), cleared at next round start. */
     roundEnd?: { round?: number | null; winner: "blue" | "red" | null; reason: string | null; winnerSide?: "attacker" | "defender" | null; label?: string | null; highlightPlayer?: { name: string; agent: string | null; kills: number | null; deaths: number | null; assists: number | null } | null } | null;
+    /** Active tactical timeout / tech pause (BLOB parity) — frame-level for TimeoutOverlay. */
+    timeout?: { team: "left" | "right" | null; calledAt: number; timeoutType: "tactical" | "tech_pause" } | null;
     /** Viewer's side this round (from the snapshot's team startingSide). */
     viewerSide?: "attack" | "defense" | null;
     /** The viewer's START side (session-snapshot ground truth) — drives the side-label fallback. */
@@ -285,6 +287,9 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
         mvp: state.match?.mvp ?? null,
       },
       roundEnd: state.roundEnd ?? null,
+      // Tactical timeout / tech pause (BLOB timeoutStarted parity) — the site's
+      // TimeoutOverlay consumes it via the broadcast frame's `timeout` field.
+      timeout: state.timeout ?? null,
       // Viewer's side this round (snapshot startingSide ground truth) — the
       // site uses it as the ATTACKER/DEFENDER WIN label fallback.
       viewerSide: state.viewerSide ?? null,

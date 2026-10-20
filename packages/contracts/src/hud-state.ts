@@ -118,6 +118,22 @@ export const hudRelayStateSchema = z.object({
    * reset), never carried into the next round.
    */
   plantSite: z.string().nullable().default(null),
+  /**
+   * Active tactical timeout / tech pause (BLOB timeoutStarted parity). `team`
+   * is null when the CALLING team is unknown — GEP never attributes it (the
+   * original desktop shipped no team either) — and the overlay renders a
+   * neutral banner rather than mislabeling a side. Cleared on the phase
+   * transition that resumes the buy timer.
+   */
+  timeout: z
+    .object({
+      team: z.enum(["left", "right"]).nullable(),
+      /** Epoch ms when the timeout was detected/started (drives the 60s bar). */
+      calledAt: z.number(),
+      timeoutType: z.enum(["tactical", "tech_pause"]),
+    })
+    .nullable()
+    .default(null),
   killfeed: z.array(killfeedEntrySchema).max(25),
   /** Round-settlement banner: "Ace" | "Clutch" | "Flawless" | "Team Ace" | "Thrifty" | "Round Win" | null. */
   gameEvent: z.string().nullable().default(null),

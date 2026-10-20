@@ -256,6 +256,17 @@ interface WorkingState {
    */
   newMatchPending: boolean;
   matchMvp: { name: string; teamId: string; kills: number; deaths: number; assists: number } | null;
+  /**
+   * Active tactical timeout / tech pause (BLOB timeoutStarted parity; the
+   * runtime detects the buy-phase freeze and emits `timeout_changed`). `team`
+   * is null when the caller is unknown (GEP never attributes it) — the overlay
+   * renders a neutral banner instead of mislabeling a side.
+   */
+  timeout: {
+    team: "left" | "right" | null;
+    calledAt: number;
+    timeoutType: "tactical" | "tech_pause";
+  } | null;
   roundEnd: {
     winner: "blue" | "red";
     reason: "elimination" | "detonation" | "defusion" | "time";
@@ -356,6 +367,7 @@ function initial(): WorkingState {
     matchWinner: null,
     newMatchPending: false,
     matchMvp: null,
+    timeout: null,
     roundEnd: null,
     viewerStartSide: null,
     sessionPhaseAt: null,
@@ -838,6 +850,7 @@ export class ValProjectionSession {
     s.pendingPhase = null;
     s.roundHistory = [];
     s.roundEnd = null;
+    s.timeout = null;
     s.gameEvent = null;
     s.gameEventRound = null;
     s.matchWinner = null;
@@ -1257,6 +1270,26 @@ export class ValProjectionSession {
         s.revision += 1;
         this.emitChange();
         return; // fully handled
+      }
+      case "timeout_changed": {
+        // Tactical timeout / tech pause from the runtime engine (BLOB
+        // timeoutStarted parity). `active:false` clears; the caller team is
+        // usually null (GEP never attributes it) — the overlay renders the
+        // neutral banner for null instead of guessing a side.
+        const rec = value as {
+          active?: unknown;
+          calledAt?: unknown;
+          timeoutType?: unknown;
+          team?: unknown;
+        };
+        s.timeout = rec?.active
+          ? {
+              team: rec?.team === "left" || rec?.team === "right" ? rec.team : null,
+              calledAt: Number(rec?.calledAt) || Date.now(),
+              timeoutType: rec?.timeoutType === "tech_pause" ? "tech_pause" : "tactical",
+            }
+          : null;
+        break;
       }
       case "round_phase": {
         if (typeof value !== "string") return;
@@ -2852,6 +2885,7 @@ export class ValProjectionSession {
       // buy scene keys on).
       gameEventRound: this.liveGameEventRound(),
       scene: this.deriveScene(),
+      timeout: s.timeout,
       roundEnd: s.roundEnd,
       roundHistory: s.roundHistory,
       updatedAt: Date.now(),
@@ -3106,6 +3140,7 @@ export class ValProjectionSession {
         roundPhase: s.roundPhase,
         gameEvent: s.gameEvent,
         roundEnd: s.roundEnd,
+        timeout: s.timeout,
         matchWinner: s.matchWinner,
         roundHistory: s.roundHistory,
         roundStartScore: s.roundStartScore,
