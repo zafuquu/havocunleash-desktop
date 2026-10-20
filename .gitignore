@@ -7,6 +7,10 @@ release/
 release-fresh/
 # versioned pack output (release-v1, release-v2, ...) — build artifacts
 release-v*/
+# candidate/validation pack output + detached pack stdout/err captures
+release-icontest/
+pack-*.out
+pack-*.err
 *.asar
 
 # Logs

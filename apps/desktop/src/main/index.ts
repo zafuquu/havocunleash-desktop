@@ -559,6 +559,8 @@ function createShellWindow(): void {
     autoHideMenuBar: true,
     backgroundColor: "#141517",
     title: "Havoc Unleash — Desktop",
+    // HU logo (padded square 640px) — ships via files: build/icon.png.
+    icon: path.join(__dirname, "..", "build", "icon.png"),
     show: false,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
