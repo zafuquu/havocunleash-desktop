@@ -24,13 +24,24 @@ async function refresh() {
     return;
   }
 
+  const inMatch = s.live?.sessionPhase === "live";
+  // v10 (2026-10-20 patch day): GEP can attach yet deliver ZERO match data
+  // (DLL injection broken after a game patch) — the HUD then runs on
+  // fabricated state. Surface that loudly instead of a healthy chip.
+  const telState = s.gepTelemetry?.state ?? null;
+  const gepDead =
+    inMatch && (telState === "STALE" || telState === "CONNECTED_BUT_NO_TELEMETRY" || telState === "ERROR");
   const dot = $("dot");
-  dot.className = "dot" + (s.runtimeConnected ? " on" : "") + (s.live?.sessionPhase === "live" ? " live" : "");
-  $("conn-text").textContent = s.runtimeConnected
-    ? s.live?.sessionPhase === "live"
-      ? "runtime: LIVE"
-      : "runtime: connected"
-    : "runtime: idle";
+  dot.className =
+    "dot" + (s.runtimeConnected ? " on" : "") + (inMatch ? " live" : "") + (gepDead ? " gepdead" : "");
+  $("conn-text").textContent = !s.runtimeConnected
+    ? "runtime: idle"
+    : gepDead
+      ? "runtime: LIVE · GEP: NO DATA"
+      : inMatch
+        ? "runtime: LIVE"
+        : "runtime: connected";
+  $("conn-text").classList.toggle("gepdead", gepDead);
 
   if (!s.signedIn) {
     show("view-login");

@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeTelemetryState } from "../dist/gep-capture.js";
+import { computeTelemetryState, isStaticGameDataItem } from "../dist/gep-capture.js";
 
 const NOW = 1_700_000_000_000;
 const FRESH = NOW; // lastGameDataAt = now → data current
@@ -114,4 +114,25 @@ test("Invariant — HEALTHY is impossible without a received info update", () =>
   assert.notEqual(noInfo, "STALE");
   const noInfoOld = state({ firstInfoUpdateAt: null, lastGameDataAt: NOW - FRESHNESS - 1 });
   assert.equal(noInfoOld, "CONNECTED_BUT_NO_TELEMETRY");
+});
+
+test("v10 — static game_info:is_pbe pings are never telemetry proof", () => {
+  // Patch-day 2026-10-20: only is_pbe arrived for the whole match (13 pings,
+  // zero match_info) — the state machine must not mistake them for data.
+  assert.equal(isStaticGameDataItem({ feature: "game_info", key: "is_pbe", value: false }), true);
+  assert.equal(isStaticGameDataItem({ feature: "game_info", key: "scene", value: "InGame" }), false);
+  assert.equal(isStaticGameDataItem({ feature: "match_info", key: "score", value: {} }), false);
+  assert.equal(isStaticGameDataItem({ feature: "me", key: "player_name", value: "x" }), false);
+  assert.equal(isStaticGameDataItem(null), false);
+  assert.equal(isStaticGameDataItem(undefined), false);
+});
+
+test("v10 — patch-day starvation: static-only stream degrades to CONNECTED_BUT_NO_TELEMETRY", () => {
+  // connect-game stamped lastGameDataAt at T0; only is_pbe pings since (they
+  // no longer stamp); firstInfoUpdateAt never set by the static-only stream.
+  const t0 = NOW - (FRESHNESS + 60_000);
+  assert.equal(
+    state({ firstInfoUpdateAt: null, lastGameDataAt: t0, featuresSetAt: t0 }),
+    "CONNECTED_BUT_NO_TELEMETRY",
+  );
 });

@@ -125,6 +125,20 @@ export function computeTelemetryState(input: {
   return input.featuresSetAt != null ? "FEATURES_SET" : "WAITING_FOR_TELEMETRY";
 }
 
+/**
+ * Static identity pings repeat on every rearm cycle even when GEP injection
+ * is dead and ZERO match data flows (patch-day 2026-10-20: 13×
+ * game_info:is_pbe across the whole match, zero match_info) — stamping
+ * telemetry proof on them made the state machine report HEALTHY through a
+ * completely starved match. Only these known-static items are excluded;
+ * every other info update (including unknown shapes) still counts.
+ */
+export function isStaticGameDataItem(
+  item: { feature?: unknown; key?: unknown } | null | undefined,
+): boolean {
+  return item?.feature === "game_info" && item?.key === "is_pbe";
+}
+
 interface ProtocolMessage {
   type?: string;
   protocolVersion?: number;
@@ -1368,12 +1382,20 @@ export class GepProviderSource {
         // kebab-kind messages, and only the underscore aliases used to stamp
         // lastGameDataAt/firstInfoUpdateAt — so a fully healthy stream stayed
         // FEATURES_SET with firstInfoUpdateAt:null forever (live 2026-10-18).
-        this.lastGameDataAt = Date.now();
-        if (this.firstInfoUpdateAt === null) this.firstInfoUpdateAt = this.lastGameDataAt;
-        this.evaluateTelemetryState();
-        if (msg.payload != null && typeof msg.payload === "object") {
-          this.watchPluginStatus(msg.payload as GepItem);
-          factFromInfoUpdate(msg.payload as GepItem, this.emit);
+        //
+        // v10 (patch-day 2026-10-20): static pings (game_info:is_pbe) kept
+        // arriving on the rearm loop while injection was dead — they must NOT
+        // stamp the proof, or the state machine reports HEALTHY through a
+        // completely starved match (facts still flow unchanged).
+        const item = msg.payload != null && typeof msg.payload === "object" ? (msg.payload as GepItem) : null;
+        if (!item || !isStaticGameDataItem(item)) {
+          this.lastGameDataAt = Date.now();
+          if (this.firstInfoUpdateAt === null) this.firstInfoUpdateAt = this.lastGameDataAt;
+          this.evaluateTelemetryState();
+        }
+        if (item) {
+          this.watchPluginStatus(item);
+          factFromInfoUpdate(item, this.emit);
         }
         return;
       }
@@ -1396,10 +1418,13 @@ export class GepProviderSource {
       case "new_info_update":
       case "info_update":
       case "infoUpdate": {
-        this.lastGameDataAt = Date.now();
-        if (this.firstInfoUpdateAt === null) this.firstInfoUpdateAt = this.lastGameDataAt;
-        this.evaluateTelemetryState();
         const item = findInfoItem(msg.payload);
+        // v10: static pings never stamp telemetry proof (see info-update).
+        if (!item || !isStaticGameDataItem(item)) {
+          this.lastGameDataAt = Date.now();
+          if (this.firstInfoUpdateAt === null) this.firstInfoUpdateAt = this.lastGameDataAt;
+          this.evaluateTelemetryState();
+        }
         if (item) factFromInfoUpdate(item, this.emit);
         return;
       }

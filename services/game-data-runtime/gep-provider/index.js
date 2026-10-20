@@ -385,7 +385,17 @@ function startElectronGepHost(gepDir) {
         const dataDir = process.env.HAVOC_GAME_DATA_DIR?.trim() ||
           path.join(process.env.LOCALAPPDATA || "", "Havoc", "game-data-runtime");
         const root = path.join(dataDir, "packages", "gep");
-        const versions = fs.readdirSync(root).sort().reverse();
+        // v10: numeric-aware sort — lexicographic ordering ranks "315.3.5"
+        // above "315.3.10" and would load the WRONG (older) GEP package.
+        const versions = fs.readdirSync(root).sort((a, b) => {
+          const pa = String(a).split(".").map((n) => parseInt(n, 10) || 0);
+          const pb = String(b).split(".").map((n) => parseInt(n, 10) || 0);
+          for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+            const d = (pb[i] ?? 0) - (pa[i] ?? 0);
+            if (d !== 0) return d;
+          }
+          return 0;
+        });
         for (const v of versions) {
           const candidate = path.join(root, v, "extracted");
           if (fs.existsSync(path.join(candidate, "index.js"))) {

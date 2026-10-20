@@ -48,6 +48,8 @@ footer { margin-top: 20px; padding-top: 10px; border-top: 1px solid rgba(255,255
 .dot { width: 9px; height: 9px; border-radius: 50%; background: #6b7075; display: inline-block; }
 .dot.on { background: #34c77b; }
 .dot.live { background: #ffb02e; }
+.dot.gepdead { background: #ff5f56; }
+#conn-text.gepdead { color: #ff7b6f; }
 .row-actions { display: flex; gap: 10px; margin-top: 10px; }
 .row-actions .btn { flex: 1; margin-top: 0; }
 .btn.danger { background: #3a1c1c; border-color: #7a3a3a; color: #ff9b8f; }
